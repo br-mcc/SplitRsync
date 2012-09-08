@@ -48,25 +48,24 @@ class BashShell:
 		self.flag = ''
 		
 	def runBash(self):
-   		if self.flag == 1:
-    			p = subprocess.Popen(self.cmd, shell=True, stdout=subprocess.PIPE)
-      			out = p.communicate()[0]
-      			return out
-   		else:
-      			subprocess.call(self.cmd, shell=True)
+		if self.flag == 1:
+			p = subprocess.Popen(self.cmd, shell=True, stdout=subprocess.PIPE)
+			out = p.communicate()[0]
+			return out
+		else:
+			subprocess.call(self.cmd, shell=True)
   
 class Options:
-   	def __init__(self):
+	def __init__(self):
 		# Actual script options
 		self.file = ''
 		self.file_set = None
 		self.hostname = ''
 		self.hostname_set = None
-   		self.chunksize = 0
+		self.chunksize = 0
 		self.chunksize_set = None
-   		self.chunkdir = ''
+		self.chunkdir = ''
 		self.chunkdir_set = None
-		
 		self.default = []
 	
 	# Should be in Splitter class, but is here due to the timing between when
@@ -182,15 +181,15 @@ class Splitter:
 		self.numPieces = 0
 		
 	def printProgress(self):
-   		self.progress = round(float(self.count) / self.numPieces * 100)
-   		sys.stdout.write("\r Splitting: " +str(self.progress)+ "%")
-   		sys.stdout.flush()
-   		time.sleep(0.5)
+		self.progress = round(float(self.count) / self.numPieces * 100)
+		sys.stdout.write("\r Splitting: " +str(self.progress)+ "%")
+		sys.stdout.flush()
+		time.sleep(0.5)
 			
 	def calcPieces(self):
 		# Given a non-default size option, calculate number of chunks.
-   		self.numPieces = round(float(self.filesize) / (self.chunksize * 1024 * 1024)) 
-   		print ">>>>> Estimated number of chunks of size",self.chunksize,"MB: ", self.numPieces 
+		self.numPieces = round(float(self.filesize) / (self.chunksize * 1024 * 1024)) 
+		print ">>>>> Estimated number of chunks of size",self.chunksize,"MB: ", self.numPieces 
 		# Too many pieces will be created.  Warn user and exit.
 		if self.numPieces > 676:
 			self.chunksize = self.options.calcPieceSize(self.largefile)
@@ -199,8 +198,8 @@ class Splitter:
 			print ""
 			sys.exit(0)
 		else:
-   			cont = raw_input(">>>>> Is this reasonable?  Would you like to continue? [y/n]: ")
-   			if 'n' in cont:
+			cont = raw_input(">>>>> Is this reasonable?  Would you like to continue? [y/n]: ")
+			if 'n' in cont:
 				sys.exit(0)
 			print ""
 		
@@ -248,16 +247,16 @@ class LargeFile:
 		return self.file.rsplit('/',1)[1]
 
 	def getFileSize(self):
-   		filestat = os.stat(self.file)
-   		self.size = filestat.st_size
+		filestat = os.stat(self.file)
+		self.size = filestat.st_size
 		return self.size
 
 	def fetchPath(self):
-   		self.shell.cmd = 'pwd'
+		self.shell.cmd = 'pwd'
 		self.shell.flag = 1
-   		path = self.shell.runBash()
-   		# Return path as string stripped of special characters.
-   		return str(path).strip()
+		path = self.shell.runBash()
+		# Return path as string stripped of special characters.
+		return str(path).strip()
 	
 
 def callRsync(f):
@@ -320,6 +319,8 @@ def main():
 	# Create splitter object with filename, size, and chunkdir/size from getArgs/calcPieceSize.
 	splitter = Splitter(options,shell,largefile)
 	splitter.split()
+
+	
 	#callRsync(data)
 	
 	
