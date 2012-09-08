@@ -138,7 +138,7 @@ class Options:
 			print "Chunk size: '-b' chunk size not specified.  Using default.  Creating ~500 chunks @ (",self.chunksize,"MB)."
 		# Set default chunk directory.
 		if "chunk" in self.default:
-			self.chunkdir = '/awips/chps_local/scratch/'
+			self.chunkdir = str(os.getcwd())
 			print "Chunk directory: '-l' chunk directory not specified.  Using default '/awips/chps_local/scratch/' directory."
 		else:
 			print "Chunk directory: ", self.chunkdir
