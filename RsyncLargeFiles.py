@@ -1,13 +1,13 @@
 #!/usr/bin/python
 
-import os
 import sys
-
 # Used for checking user/group permissions
+import os
 import pwd
 import grp
-import time
 import stat
+# Used for issuing bash commands and collecting script options.
+import time
 import getopt
 import subprocess
 
@@ -25,15 +25,16 @@ Mandatory Options:
   
 Extra Options:
   -b				Split piece size in MB.
-  				  Default: Calculated size to create 400 chunks.
+  				   Default: Calculated size to create 400 chunks.
   -l				Directory used to store split chunks.
-  				  Default: /scratch/
+  				   Default: /scratch/
 				  
   --help			Print this output.
   --filename			Set file to transfer.
   --destination			Remote hostname.
   --size			Chunk size.
   --chunkdir			Directory to store chunks from split command.'''
+  
   
 class DefaultOpts(Exception):
 	def __init__(self,val):
@@ -56,6 +57,7 @@ class BashShell:
   
 class Options:
    	def __init__(self):
+		# Actual script options
 		self.file = ''
 		self.file_set = None
 		self.hostname = ''
@@ -64,13 +66,99 @@ class Options:
 		self.chunksize_set = None
    		self.chunkdir = ''
 		self.chunkdir_set = None
+		
+		self.default = []
 	
+	# Should be in Splitter class, but is here due to the timing between when
+	#    a LargeFile object is instantiated and the Splitter object.
 	def calcPieceSize(self,largefile):
 		self.file = largefile.file
 		# Estimates chunk size for 500 chunks in MB.
 		self.chunksize = round(float(largefile.getFileSize()) / 500 / 1024 / 1024,1)
 		return (int(self.chunksize) + 1)
+	
+	# Set option class attributes based on those supplied from the user.
+	def parseOptions(self):
+		optns = 'f:d:b:l:'
+		keywords = ['file','destination','size','chunkdir']
+		try:
+			opts, extraparams = getopt.getopt(sys.argv[1:], optns, keywords)
+			#print 'Opts: ', opts
+			for o,p in opts:
+				if o in ['-h','--help']:
+					_usage()
+					sys.exit(0)
+				if o in ['-f','--file']:
+					self.file = p
+					self.file_set = True
+				if o in ['-d','--destination']:
+					self.hostname = p
+					self.hostname_set = True
+				if o in ['-b','--size']:
+					self.chunksize = int(p)
+					self.chunksize_set = True
+				if o in ['-l','--chunkdir']:
+					self.chunkdir = p
+					self.chunkdir_set = True
+			if not self.file_set or not self.hostname_set:
+				raise getopt.GetoptError('MANDATORY option missing.')
+			if not self.chunksize_set or not self.chunkdir_set:
+				if not self.chunksize_set:
+					self.default.append('size')
+				if not self.chunkdir_set:
+					self.default.append('chunk')
+		except getopt.GetoptError, (strerror):
+			if "-f" in str(strerror):
+				print "ERROR: '-f' option given but no filename provided."
+			elif "-d" in str(strerror):
+				print "ERROR: '-d' option given but no destination hostname provided."
+			elif "MANDATORY" in str(strerror):
+				print "Missing filename or destination hostname option.  Review '-f' and '-d' options."
+			else:
+				print strerror
+			_usage()
+			sys.exit(0)
+	
+	# Checks user-supplied options.  Do the files/directories exist?  Can we write to them?
+	def checkOptions(self,largefile):
+		# Check if file really exists.
+		print "Checking for file: ", self.file
+		largefile.fileExists(self.file)
+		if not largefile.exists == 1:
+			print "File exists: (ERROR) No.  Check path and filename."
+			print "Exiting . . ."
+			sys.exit(0)
+		else:
+			print 'File exists: Yes!'
 		
+		# Set defaults for missing options.
+		# Calculate and set chunk size.
+		if "size" in self.default:
+			# Truncate the value and add 1.
+			self.chunksize = self.calcPieceSize(largefile)
+			print "Chunk size: '-b' chunk size not specified.  Using default.  Creating ~500 chunks @ (",self.chunksize,"MB)."
+		# Set default chunk directory.
+		if "chunk" in self.default:
+			self.chunkdir = '/awips/chps_local/scratch/'
+			print "Chunk directory: '-l' chunk directory not specified.  Using default '/awips/chps_local/scratch/' directory."
+		else:
+			print "Chunk directory: ", self.chunkdir
+		largefile.fileExists(self.chunkdir)
+		if not largefile.exists == 1:
+			print "Chunk directory exists: (ERROR) No (",self.chunkdir,") does not exist."
+			print "Exiting . . ."
+			sys.exit(0)
+		else:
+			print 'Chunk directory exists: Yes!'
+			
+		# Check if we can create our chunks in the chunk directory.
+		if not isWriteable(self.chunkdir):
+			print "Permissions: (ERROR) Current user does not have access to specified directory."
+			print "Exiting."
+			sys.exit(0)
+		else:
+			print "Permissions: Good!"
+	
 		
 class RemoteHost:
 	def __init__(self,options,largefile):
@@ -210,60 +298,12 @@ def isWriteable(chunkdir):
 	else:
 		return bool(st.st_mode & stat.S_IWOTH)
 	
-
-def getArgs(default,options):
-	default = default
-	optns = 'f:d:b:l:'
-	keywords = ['file','destination','size','chunkdir']
-	try:
-		opts, extraparams = getopt.getopt(sys.argv[1:], optns, keywords)
-		#print 'Opts: ', opts
-		for o,p in opts:
-			if o in ['-h','--help']:
-				_usage()
-				sys.exit(0)
-			if o in ['-f','--file']:
-				options.file = p
-				options.file_set = True
-			if o in ['-d','--destination']:
-				options.hostname = p
-				options.hostname_set = True
-			if o in ['-b','--size']:
-				options.chunksize = int(p)
-				options.chunksize_set = True
-			if o in ['-l','--chunkdir']:
-				options.chunkdir = p
-				options.chunkdir_set = True
-		if not options.file_set or not options.hostname_set:
-			raise getopt.GetoptError('MANDATORY option missing.')
-		if not options.chunksize_set or not options.chunkdir_set:
-			if not options.chunksize_set:
-				default.append('size')
-			if not options.chunkdir_set:
-				default.append('chunk')
-	except getopt.GetoptError, (strerror):
-		if "-f" in str(strerror):
-			print "ERROR: '-f' option given but no filename provided."
-		elif "-d" in str(strerror):
-			print "ERROR: '-d' option given but no destination hostname provided."
-		elif "MANDATORY" in str(strerror):
-			print "Missing filename or destination hostname option.  Review '-f' and '-d' options."
-		else:
-			print strerror
-		_usage()
-		sys.exit(0)
-		
-	
 def main():
-	
-	default = []
 
 	# Create class objects
 	shell = BashShell()
 	options = Options()
-
-	# Parse options
-	getArgs(default,options)
+	options.parseOptions()
 	
 	# Create largefile object with filename from getArgs()
 	largefile = LargeFile(options,shell)
@@ -274,45 +314,8 @@ def main():
 	else:
 		largefile.basename = options.file
 		options.file = largefile.fetchPath()+"/"+options.file
-	
-	# Check if file really exists.
-	print "Checking for file: ", options.file
-	largefile.fileExists(options.file)
-	if not largefile.exists == 1:
-		print "File exists: (ERROR) No.  Check path and filename."
-		print "Exiting . . ."
-		sys.exit(0)
-	else:
-		print 'File exists: Yes!'
-	
-	# Set defaults for missing options.
-	# Calculate and set chunk size.
-	if "size" in default:
-		# Truncate the value and add 1.
-		options.chunksize = options.calcPieceSize(largefile)
-		print "Chunk size: '-b' chunk size not specified.  Using default.  Creating ~500 chunks @ (",options.chunksize,"MB)."
-	# Set default chunk directory.
-	if "chunk" in default:
-		options.chunkdir = '/awips/chps_local/scratch/'
-		print "Chunk directory: '-l' chunk directory not specified.  Using default '/awips/chps_local/scratch/' directory."
-	else:
-		print "Chunk directory: ", options.chunkdir
-	largefile.fileExists(options.chunkdir)
-	if not largefile.exists == 1:
-		print "Chunk directory exists: (ERROR) No (",options.chunkdir,") does not exist."
-		print "Exiting . . ."
-		sys.exit(0)
-	else:
-		print 'Chunk directory exists: Yes!'
-			
-	# Check if we can create our chunks in the chunk directory.
-	if not isWriteable(options.chunkdir):
-		print "Permissions: (ERROR) Current user does not have access to specified directory."
-		print "Exiting."
-		sys.exit(0)
-	else:
-		print "Permissions: Good!"
-			
+		
+	options.checkOptions(largefile)
 		
 	# Create splitter object with filename, size, and chunkdir/size from getArgs/calcPieceSize.
 	splitter = Splitter(options,shell,largefile)
