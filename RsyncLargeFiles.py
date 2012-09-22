@@ -257,21 +257,38 @@ class LargeFile:
 		path = self.shell.runBash()
 		# Return path as string stripped of special characters.
 		return str(path).strip()
-	
 
-def callRsync(f):
-	destination = dest
-	dir = f
-	alphabet = 'abcdefghijklmnopqrstuvwxyz'
-	letter = ''
-	rsync = 'rsync -av --include "/scratch/ '+destination+':/scratch/*_'+letter+'* &'
-	
-	for letter in alphabet:
-		# Make sure we don't use more than 10 simultaneous connections.
-		while sim_conn < 10:
-			print "Starting process: ",rsync
-			shell.runBash(rsync,retr=0)
-			count += 1
+
+class rsyncSession:
+        def __init__(self,options,shell,largefile):
+                self.options = options
+                self.shell = shell
+                self.largefile = largefile
+                self.file = self.largefile.file
+                self.remote = self.options.hostname
+                self.chunkdir = self.options.chunkdir
+                self.fileset = ''
+                self.session_number = 0
+
+        def callRsync(f):
+                ''' Build Rsync command and create rsynch process.'''
+                source = self.file+'_'+self.fileset+'*'
+                destination = self.remote+':/scratch/
+                self.shell.cmd = 'rsync -rlzv --progress --include "'+source+'" --exclude "*" '+self.chunkdir' '+destination+' &'
+                self.shell.flag = 0
+                self.shell.runBash()
+
+        def trackActive():
+                ''' Track active Rsynch processes.'''
+
+        def checkRemote():
+                ''' Check remote system for completed file transfers.'''
+                for letter in alphabet:
+                        # Make sure we don't use more than 10 simultaneous connections.
+                        while sim_conn < 10:
+                                print "Starting process: ",rsync
+                                shell.runBash(rsync,retr=0)
+                                count += 1
 			
 
 def isWriteable(chunkdir):
