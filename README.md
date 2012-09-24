@@ -7,7 +7,7 @@ Intended to help automate the process of breaking up large files, transfering th
 Current Status
 ==============
 
-Splitting and data transfer complete successfully.  Things to do:
+Splits, transfers and rebuilds the file on the remote end.  Things to do:
  * Review performance.
  * Updates of completion status seem clunky, at the moment.  Review how/when printProgress is called.
- * Add remote builder.
+ * Some random rsync errors in the background.  Need to catch the exceptions and make sure there aren't associated fixes to make.
