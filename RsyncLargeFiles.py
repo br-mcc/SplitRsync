@@ -382,14 +382,16 @@ def main():
 
         # Initiate rsync sessions.
         session = RsyncSession(options,shell,largefile,splitter)
+        # Single rsync session to handle all chunks with <filename>_a* <filename>_b* etc....
         for letter in ascii_lowercase:
                 session.fileset = letter
+                # Starts initial set of rsync sessions.
                 session.trackActive()
                 while session.synch_queue == 8:
                         session.trackActive()
                         session.checkRemote()
 
-        while shell.progresse < 100:
+        while shell.progress < 100:
                 session.checkRemote()
 	
 
