@@ -96,11 +96,11 @@ class Options:
 	# Set option class attributes based on those supplied from the user.
 	def parseOptions(self):
 		optns = 'f:d:b:l:'
-		keywords = ['file','destination','size','chunkdir']
+		keywords = ['help','file=','destination=','size=','chunkdir=','debug']
 		try:
 			opts, extraparams = getopt.getopt(sys.argv[1:], optns, keywords)
-			print 'Opts: ', opts
-			print 'extraparams: ', extraparams
+			#print 'Opts: ', opts
+			#print 'extraparams: ', extraparams
 			for o,p in opts:
 				if o in ['-h','--help']:
 					_usage()
