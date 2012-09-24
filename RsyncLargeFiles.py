@@ -11,6 +11,10 @@ import stat
 import time
 import getopt
 import subprocess
+# Checksums
+import md5
+# Calculate runtime
+from datetime import datetime, timedelta
 
 def _usage():
 	print '''\
@@ -42,14 +46,15 @@ class DefaultOpts(Exception):
 		self.val = val
 	def __str__(self):
 		return repr(self.val)
+		
  
 class BashShell:
 	def __init__(self):
 		self.cmd = ''
 		self.flag = ''
 		self.pid_catch = 0
-		self.linecount = 0
-		self.totalcount = 0
+		self.current = 0
+		self.total = 0
 		pid = 0
 		
 	def runBash(self):
@@ -65,8 +70,11 @@ class BashShell:
 			return out
 
 	def printProgress(self,prompt):
-		self.progress = round(float(self.linecount) / self.totalcount * 100)
-		sys.stdout.write("\r "+prompt+" " +str(self.progress)+ "%")
+		try:
+			self.progress = round(float(self.current) / self.total * 100)
+		except ZeroDivisionError:
+			self.progress = 0.
+		sys.stdout.write("\r "+prompt+" " +str(self.progress)+ "% || ["+str(self.current).strip()+"/"+str(self.total).strip()+"]")
 		sys.stdout.flush()
 		time.sleep(0.5)
 			
@@ -201,10 +209,11 @@ class RemoteHost:
 		self.chunkdir = self.options.chunkdir
 		self.numfiles = 0
 		
+		
 class Splitter:
 	def __init__(self,options,shell,largefile):
 		self.options = options
-		self.shell = shell
+		self.splittershell = shell
 		self.largefile = largefile
 		self.file = largefile.file
 		self.basename = largefile.basename
@@ -242,23 +251,24 @@ Calculating number of chunks with given chunk size.'''
 		self.path = self.chunkdir+'/'+str(self.basename)
 		print self.path
 		
-		self.shell.cmd = 'split -b '+str(self.chunksize)+'m ' +self.file+ ' ' +self.path+ '_ &'
-		self.shell.flag = 0
-		self.shell.runBash()
+		self.splittershell.cmd = 'split -b '+str(self.chunksize)+'m ' +self.file+ ' ' +self.path+ '_ &'
+		self.splittershell.flag = 0
+		self.splittershell.runBash()
 
 		# Print progress of split command.
 		self.count = 0
-		self.shell.cmd = 'ls -l ' +self.path+ '* |wc -l'
-		self.shell.flag = 1
-		self.shell.totalcount = self.numPieces
-		while self.shell.linecount < self.numPieces:
-			self.shell.linecount = int(self.shell.runBash())
-			self.shell.printProgress('Splitting: ')
+		self.splittershell.cmd = 'ls -l ' +self.path+ '* |wc -l'
+		self.splittershell.flag = 1
+		self.splittershell.total = self.numPieces
+		while self.splittershell.current < self.numPieces:
+			self.splittershell.current = int(self.splittershell.runBash())
+			self.splittershell.printProgress('Splitting: ')
 	
 		
 class LargeFile:
 	def __init__(self,options,shell):
 		self.file = options.file
+		self.checksum = self.getSum()
 		self.basename = ''
 		self.shell = shell
 		self.size = self.getFileSize()
@@ -287,14 +297,19 @@ class LargeFile:
 		# Return path as string stripped of special characters.
 		return str(path).strip()
 
+	def getSum(self):
+                self.sum = md5.new(self.file).hexdigest()
+                return str(self.sum)
+                
+
 
 class RsyncSession:
         def __init__(self,options,shell,largefile,splitter):
                 self.options = options
-                self.shell = shell
+                self.syncshell = shell
                 self.largefile = largefile
                 self.splitter = splitter
-                self.file = self.largefile.file
+                self.file = self.largefile.basename
                 self.remote = self.options.hostname
                 self.chunkdir = self.options.chunkdir
                 self.totalPieces = self.splitter.numPieces
@@ -302,38 +317,73 @@ class RsyncSession:
                 self.fileset = ''
                 self.progress = 0
                 self.synch_queue = 0
-                self.alphabet = ['abcdefghijklmnopqrstuvwxyz']
 
         def callRsync(self):
                 ''' Build Rsync command and create rsynch process.'''
                 source = self.file+'_'+self.fileset+'*'
                 destination = self.remote+':'+self.chunkdir+'/.'
-                self.shell.cmd = 'rsync -rlz --include "'+source+'" --exclude "*" '+self.chunkdir+' '+destination+' &'
-                self.shell.flag = 0
+                self.syncshell.cmd = 'rsync -rlz --include "'+source+'" --exclude "*" '+self.chunkdir+' '+destination+' &'
+                self.syncshell.flag = 0
                 #self.shell.pid_catch = 1
                 #self.pid = self.shell.runBash()
                 #self.synch_queue.append(self.pid)
-                self.shell.runBash()
+                self.syncshell.runBash()
 
-        def trackActive(self):
+        def getQueue(self):
                 ''' Track active Rsynch processes.'''
-                self.shell.cmd = 'ps -eaf|grep "rsync -rlz"|grep -v grep|wc -l'
-                self.shell.flag = 1
-                self.synch_queue = int(self.shell.runBash())
-                if self.synch_queue < 8:
-                        self.callRsync()
+                self.syncshell.cmd = 'ps -eaf|grep "rsync -rlz"|grep -v grep|wc -l'
+                self.syncshell.flag = 1
+                self.synch_queue = int(self.syncshell.runBash())
+		return int(self.synch_queue)
+		
 
         def checkRemote(self):
                 ''' Check remote system for completed file transfers.'''
-                self.shell.cmd = "ssh "+self.remote+" 'ls -l "+self.chunkdir+"|wc -l'"
-                self.shell.flag = 1
-                chunksDone = self.shell.runBash()
-                self.shell.linecount = chunksDone
-                self.shell.totalcount = self.totalPieces
-                self.shell.printProgress('Transferring: ')
+                self.syncshell.cmd = "ssh "+self.remote+" 'ls -l "+self.chunkdir+"|wc -l'"
+                self.syncshell.flag = 1
+                chunksDone = self.syncshell.runBash()
+                self.syncshell.current = chunksDone
+                self.syncshell.total = self.totalPieces
+                self.syncshell.printProgress('Transferring: ')
+		
                         
-			
+class Builder:
+        def __init__(self,shell,session,largefile):
+                self.buildershell = shell
+		self.session = session
+                self.localfilesize = largefile.size
+		self.remotefilesize = 0
+                self.localsum = largefile.checksum
+                self.remotesum = ''
+                
+        def cat(self):
+                self.buildershell.cmd = "ssh "+self.session.remote+" 'cd "+self.session.chunkdir+"; cat "+self.session.file+"_* > "+self.session.file+" &'"
+                self.buildershell.flag = 0
+                self.buildershell.runBash()
+		self.buildershell.progress=0
 
+        def progress(self):
+                self.buildershell.cmd = "ssh "+self.session.remote+" 'ls -l "+self.session.file+"'|awk '{print $5}'"
+                self.buildershell.flag = 1
+                self.remotefilesize = int(self.buildershell.runBash())
+                self.buildershell.current = self.remotefilesize
+                self.buildershell.total = self.localfilesize
+                self.buildershell.printProgress('Building: ')
+
+        def compareSums(self):
+                self.buildershell.cmd = "ssh "+self.session.remote+" 'md5sum "+self.session.file+"'"
+                self.buildershell.flag = 1
+                self.remotesum = self.buildershell.runBash()
+                print '''\
+Local sum:  %s
+Remote sum: %s''' % (self.localsum, self.remotesum)
+                if self.remotesum != self.localsum:
+                        print 'ERROR:  Checksums don\'t match!  There might have been a problem during the file transfer!'
+                        sys.exit(0)
+                else:
+                        print 'Transfer and rebuild of file succeeded!'
+			
+                
 def isWriteable(chunkdir):
 	st = os.stat(chunkdir)
 	uid = st.st_uid
@@ -356,8 +406,15 @@ def isWriteable(chunkdir):
 	# Check if there's any hope.
 	else:
 		return bool(st.st_mode & stat.S_IWOTH)
+
+def getTime():
+        time = datetime.now()
+        return time
 	
 def main():
+
+        #Set start time.
+        time_not = getTime()
 
 	# Create class objects
 	shell = BashShell()
@@ -386,13 +443,40 @@ def main():
         for letter in ascii_lowercase:
                 session.fileset = letter
                 # Starts initial set of rsync sessions.
-                session.trackActive()
-                while session.synch_queue == 8:
-                        session.trackActive()
+		if session.getQueue < 5:
+                        session.callRsync()
+			time.sleep(2)
+                while session.synch_queue == 5:
+                        session.getQueue()
                         session.checkRemote()
+		
+	# One final sync.
+	session.fileset = "*"
+	session.callRsync()
+	
+	while session.getQueue == 1:
+		session.getQueue()
+		print "Running a final synch..."
+		
+	while session.syncshell.current != session.syncshell.total:
+		session.checkRemote()
 
-        while shell.progress < 100:
-                session.checkRemote()
+        # Cat the file back together.
+        builder = Builder(shell,session,largefile)
+        builder.cat()
+        while builder.remotefilesize != builder.localfilesize:
+                builder.progress()
+        # md5sum to make sure it's a legitimate transfer.
+        builder.compareSums()
+
+        # Set finish time.
+        time_one = getTime()
+        # Calculate run time.
+        runtime = time_one - time_not
+	print '''\
+------------
+Run Time of Transfer:  %s hours %s minutes and %s seconds
+------------\n''' % (runtime.hours,runtime.minutes,runtime.seconds)
 	
 
 if __name__ == '__main__':
