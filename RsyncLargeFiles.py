@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import sys
+from string import ascii_lowercase
 # Used for checking user/group permissions
 import os
 import pwd
@@ -46,14 +47,29 @@ class BashShell:
 	def __init__(self):
 		self.cmd = ''
 		self.flag = ''
+		self.pid_catch = 0
+		self.linecount = 0
+		self.totalcount = 0
+		pid = 0
 		
 	def runBash(self):
-		if self.flag == 1:
+                if self.flag == 0:
+                        if self.pid_catch == 0:
+                                subprocess.call(self.cmd, shell=True)
+                        elif self.pid_catch == 1:
+                                pid = subprocess.Popen(self.cmd, shell=True).pid
+                                return int(pid)
+		elif self.flag == 1:
 			p = subprocess.Popen(self.cmd, shell=True, stdout=subprocess.PIPE)
 			out = p.communicate()[0]
 			return out
-		else:
-			subprocess.call(self.cmd, shell=True)
+
+	def printProgress(self,prompt):
+		self.progress = round(float(self.linecount) / self.totalcount * 100)
+		sys.stdout.write("\r "+prompt+" " +str(self.progress)+ "%")
+		sys.stdout.flush()
+		time.sleep(0.5)
+			
   
 class Options:
 	def __init__(self):
@@ -66,6 +82,7 @@ class Options:
 		self.chunksize_set = None
 		self.chunkdir = ''
 		self.chunkdir_set = None
+		self.debug = False
 		self.default = []
 	
 	# Should be in Splitter class, but is here due to the timing between when
@@ -82,7 +99,8 @@ class Options:
 		keywords = ['file','destination','size','chunkdir']
 		try:
 			opts, extraparams = getopt.getopt(sys.argv[1:], optns, keywords)
-			#print 'Opts: ', opts
+			print 'Opts: ', opts
+			print 'extraparams: ', extraparams
 			for o,p in opts:
 				if o in ['-h','--help']:
 					_usage()
@@ -99,6 +117,8 @@ class Options:
 				if o in ['-l','--chunkdir']:
 					self.chunkdir = p
 					self.chunkdir_set = True
+				if o in ['--debug']:
+                                        self.debug = True
 			if not self.file_set or not self.hostname_set:
 				raise getopt.GetoptError('MANDATORY option missing.')
 			if not self.chunksize_set or not self.chunkdir_set:
@@ -157,6 +177,20 @@ class Options:
 			sys.exit(0)
 		else:
 			print "Permissions: Good!"
+
+		if self.debug:
+                        self.debugmode()
+
+	def debugMode(self):
+                print '''\
+-----------------------
+DEBUG INFORMATION
+Options used:
+   -f:   %s
+   -d:   %s
+   -l:   %s
+   -b:   %s
+-----------------------''' % (self.file,self.hostname,self.chunkdir,self.chunksize)
 	
 		
 class RemoteHost:
@@ -179,12 +213,6 @@ class Splitter:
 		self.chunkdir = self.options.chunkdir
 		self.cmd = ''
 		self.numPieces = 0
-		
-	def printProgress(self):
-		self.progress = round(float(self.count) / self.numPieces * 100)
-		sys.stdout.write("\r Splitting: " +str(self.progress)+ "%")
-		sys.stdout.flush()
-		time.sleep(0.5)
 			
 	def calcPieces(self):
 		# Given a non-default size option, calculate number of chunks.
@@ -222,9 +250,10 @@ Calculating number of chunks with given chunk size.'''
 		self.count = 0
 		self.shell.cmd = 'ls -l ' +self.path+ '* |wc -l'
 		self.shell.flag = 1
-		while self.count < self.numPieces:
-			self.count = int(self.shell.runBash())
-			self.printProgress()
+		self.shell.totalcount = self.numPieces
+		while self.shell.linecount < self.numPieces:
+			self.shell.linecount = int(self.shell.runBash())
+			self.shell.printProgress('Splitting: ')
 	
 		
 class LargeFile:
@@ -259,36 +288,50 @@ class LargeFile:
 		return str(path).strip()
 
 
-class rsyncSession:
-        def __init__(self,options,shell,largefile):
+class RsyncSession:
+        def __init__(self,options,shell,largefile,splitter):
                 self.options = options
                 self.shell = shell
                 self.largefile = largefile
+                self.splitter = splitter
                 self.file = self.largefile.file
                 self.remote = self.options.hostname
                 self.chunkdir = self.options.chunkdir
+                self.totalPieces = self.splitter.numPieces
+                self.numPieces = 0
                 self.fileset = ''
-                self.session_number = 0
+                self.progress = 0
+                self.synch_queue = 0
+                self.alphabet = ['abcdefghijklmnopqrstuvwxyz']
 
-        def callRsync(f):
+        def callRsync(self):
                 ''' Build Rsync command and create rsynch process.'''
                 source = self.file+'_'+self.fileset+'*'
-                destination = self.remote+':/scratch/
-                self.shell.cmd = 'rsync -rlzv --progress --include "'+source+'" --exclude "*" '+self.chunkdir' '+destination+' &'
+                destination = self.remote+':'+self.chunkdir+'/.'
+                self.shell.cmd = 'rsync -rlz --include "'+source+'" --exclude "*" '+self.chunkdir+' '+destination+' &'
                 self.shell.flag = 0
+                #self.shell.pid_catch = 1
+                #self.pid = self.shell.runBash()
+                #self.synch_queue.append(self.pid)
                 self.shell.runBash()
 
-        def trackActive():
+        def trackActive(self):
                 ''' Track active Rsynch processes.'''
+                self.shell.cmd = 'ps -eaf|grep "rsync -rlz"|grep -v grep|wc -l'
+                self.shell.flag = 1
+                self.synch_queue = int(self.shell.runBash())
+                if self.synch_queue < 8:
+                        self.callRsync()
 
-        def checkRemote():
+        def checkRemote(self):
                 ''' Check remote system for completed file transfers.'''
-                for letter in alphabet:
-                        # Make sure we don't use more than 10 simultaneous connections.
-                        while sim_conn < 10:
-                                print "Starting process: ",rsync
-                                shell.runBash(rsync,retr=0)
-                                count += 1
+                self.shell.cmd = "ssh "+self.remote+" 'ls -l "+self.chunkdir+"|wc -l'"
+                self.shell.flag = 1
+                chunksDone = self.shell.runBash()
+                self.shell.linecount = chunksDone
+                self.shell.totalcount = self.totalPieces
+                self.shell.printProgress('Transferring: ')
+                        
 			
 
 def isWriteable(chunkdir):
@@ -337,9 +380,17 @@ def main():
 	splitter = Splitter(options,shell,largefile)
 	splitter.split()
 
-	
-	#callRsync(data)
-	
+        # Initiate rsync sessions.
+        session = RsyncSession(options,shell,largefile,splitter)
+        for letter in ascii_lowercase:
+                session.fileset = letter
+                session.trackActive()
+                while session.synch_queue == 8:
+                        session.trackActive()
+                        session.checkRemote()
+
+        while shell.progresse < 100:
+                session.checkRemote()
 	
 
 if __name__ == '__main__':
