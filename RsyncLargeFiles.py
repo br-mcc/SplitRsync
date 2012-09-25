@@ -74,6 +74,11 @@ class BashShell:
 			self.progress = round(float(self.current) / self.total * 100)
 		except ZeroDivisionError:
 			self.progress = 0.
+		except ValueError:
+                        print "Current: ",self.current
+                        print "Total: ",self.total
+                        print "Progress: ",self.progress
+                        sys.exit(0)
 		sys.stdout.write("\r "+prompt+" " +str(self.progress)+ "% || ["+str(self.current).strip()+"/"+str(self.total).strip()+"]")
 		sys.stdout.flush()
 		time.sleep(0.5)
@@ -298,8 +303,10 @@ class LargeFile:
 		return str(path).strip()
 
 	def getSum(self):
-                self.sum = md5.new(self.file).hexdigest()
-                return str(self.sum)
+                self.shell.cmd = 'md5sum '+self.file
+                self.shell.flag = 1
+                localsum = self.shell.runBash()
+                return localsum
                 
 
 
@@ -321,7 +328,7 @@ class RsyncSession:
         def callRsync(self):
                 ''' Build Rsync command and create rsynch process.'''
                 source = self.file+'_'+self.fileset+'*'
-                destination = self.remote+':'+self.chunkdir+'/.'
+                destination = self.remote+':'+self.chunkdir+'/'
                 self.syncshell.cmd = 'rsync -rlz --include "'+source+'" --exclude "*" '+self.chunkdir+' '+destination+' &'
                 self.syncshell.flag = 0
                 #self.shell.pid_catch = 1
@@ -335,16 +342,30 @@ class RsyncSession:
                 self.syncshell.flag = 1
                 self.synch_queue = int(self.syncshell.runBash())
 		return int(self.synch_queue)
-		
 
-        def checkRemote(self):
+	def getLocalCount(self):
+                self.syncshell.cmd = 'ls -l '+self.chunkdir+'/|wc -l'
+                self.syncshell.flag = 1
+                count = self.syncshell.runBash()
+                return int(count)
+
+        def getRemoteCount(self):
                 ''' Check remote system for completed file transfers.'''
                 self.syncshell.cmd = "ssh "+self.remote+" 'ls -l "+self.chunkdir+"|wc -l'"
                 self.syncshell.flag = 1
                 chunksDone = self.syncshell.runBash()
-                self.syncshell.current = chunksDone
+                return int(chunksDone)
+
+        def updateProgress(self):
+                self.syncshell.current = self.getRemoteCount()
                 self.syncshell.total = self.totalPieces
                 self.syncshell.printProgress('Transferring: ')
+
+        def verifyIntegrity(self):
+                destination = self.remote+':'+self.chunkdir+'/'
+                self.syncshell.cmd = 'rsync -rlz '+self.chunkdir+' '+destination+' &'
+                self.syncshell.flag = 0
+                self.syncshell.runBash()
 		
                         
 class Builder:
@@ -352,7 +373,6 @@ class Builder:
                 self.buildershell = shell
 		self.session = session
                 self.localfilesize = largefile.size
-		self.remotefilesize = 0
                 self.localsum = largefile.checksum
                 self.remotesum = ''
                 
@@ -362,16 +382,19 @@ class Builder:
                 self.buildershell.runBash()
 		self.buildershell.progress=0
 
-        def progress(self):
-                self.buildershell.cmd = "ssh "+self.session.remote+" 'ls -l "+self.session.file+"'|awk '{print $5}'"
+	def getRemoteSize(self):
+                self.buildershell.cmd = "ssh "+self.session.remote+" 'ls -l "+self.session.chunkdir+self.session.file+"'|awk '{print $5}'"
                 self.buildershell.flag = 1
-                self.remotefilesize = int(self.buildershell.runBash())
-                self.buildershell.current = self.remotefilesize
+                remotefilesize = self.buildershell.runBash()
+                return int(remotefilesize)
+
+        def progress(self):
+                self.buildershell.current = self.getRemoteSize()
                 self.buildershell.total = self.localfilesize
                 self.buildershell.printProgress('Building: ')
 
         def compareSums(self):
-                self.buildershell.cmd = "ssh "+self.session.remote+" 'md5sum "+self.session.file+"'"
+                self.buildershell.cmd = "ssh "+self.session.remote+" 'md5sum "+self.session.chunkdir+self.session.file+"'"
                 self.buildershell.flag = 1
                 self.remotesum = self.buildershell.runBash()
                 print '''\
@@ -437,35 +460,49 @@ def main():
 	splitter = Splitter(options,shell,largefile)
 	splitter.split()
 
+	sys.stdout.write("\n")
+
         # Initiate rsync sessions.
         session = RsyncSession(options,shell,largefile,splitter)
-        # Single rsync session to handle all chunks with <filename>_a* <filename>_b* etc....
-        for letter in ascii_lowercase:
-                session.fileset = letter
-                # Starts initial set of rsync sessions.
-		if session.getQueue < 5:
-                        session.callRsync()
-			time.sleep(2)
-                while session.synch_queue == 5:
-                        session.getQueue()
-                        session.checkRemote()
-		
-	# One final sync.
-	session.fileset = "*"
-	session.callRsync()
-	
-	while session.getQueue == 1:
-		session.getQueue()
-		print "Running a final synch..."
-		
-	while session.syncshell.current != session.syncshell.total:
-		session.checkRemote()
+        if session.getLocalCount() != session.getRemoteCount():
+                # Single rsync session to handle all chunks with <filename>_a* <filename>_b* etc....
+                for letter in ascii_lowercase:
+                        session.fileset = letter
+                        # Starts initial set of rsync sessions.
+                        if session.getQueue() < 5:
+                                session.callRsync()
+                                time.sleep(2)
+                        while session.synch_queue == 5:
+                                session.getQueue()
+                                session.updateProgress()
 
+                sys.stdout.write("Verify data transfer.\n")
+
+                while session.syncshell.progress < 100:
+
+                        if session.getQueue() < 1:
+                                # One final sync.
+                                session.verifyIntegrity()
+                        while session.getQueue() == 1:
+                                session.getQueue()
+                                session.updateProgress()
+                        
+                        if session.getLocalCount() == session.getRemoteCount():
+                                continue
+        else:'''
+                # Possibly break up into four quarters?  Progress is useless to watch, atm.
+                sys.stdout.write("Files already transferred.  Verify integrity of remote files.\n")
+                session.verifyIntegrity()
+                while session.getQueue() == 1:
+                        session.getQueue()
+                        session.updateProgress()'''
+                        
         # Cat the file back together.
         builder = Builder(shell,session,largefile)
         builder.cat()
-        while builder.remotefilesize != builder.localfilesize:
+        while builder.getRemoteSize() != builder.localfilesize:
                 builder.progress()
+                time.sleep(2)
         # md5sum to make sure it's a legitimate transfer.
         builder.compareSums()
 
