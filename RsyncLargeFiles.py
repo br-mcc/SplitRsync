@@ -55,7 +55,8 @@ class BashShell:
 		self.pid_catch = 0
 		self.current = 0
 		self.total = 0
-		pid = 0
+                self.start = None
+                self.end = None
 		
 	def runBash(self):
                 if self.flag == 0:
@@ -82,6 +83,13 @@ class BashShell:
 		sys.stdout.write("\r "+prompt+" " +str(self.progress)+ "% || ["+str(self.current).strip()+"/"+str(self.total).strip()+"]")
 		sys.stdout.flush()
 		time.sleep(0.5)
+
+	def getRunTime(self,action):
+                runtime = self.end - self.start
+                print '''
+------------
+%s took %s hours %s minutes and %s seconds
+------------\n''' % (action,runtime.hours,runtime.minutes,runtime.seconds)
 			
   
 class Options:
@@ -204,15 +212,6 @@ Options used:
    -l:   %s
    -b:   %s
 -----------------------''' % (self.file,self.hostname,self.chunkdir,self.chunksize)
-	
-		
-class RemoteHost:
-	def __init__(self,options,largefile):
-		self.options = options
-		self.file = largefile.file
-		self.hostname = self.options.hostname
-		self.chunkdir = self.options.chunkdir
-		self.numfiles = 0
 		
 		
 class Splitter:
@@ -307,7 +306,6 @@ class LargeFile:
                 self.shell.flag = 1
                 localsum = self.shell.runBash()
                 return localsum
-                
 
 
 class RsyncSession:
@@ -319,7 +317,7 @@ class RsyncSession:
                 self.file = self.largefile.basename
                 self.remote = self.options.hostname
                 self.chunkdir = self.options.chunkdir
-                self.totalPieces = self.splitter.numPieces
+                self.totalPieces = self.getLocalCount()
                 self.numPieces = 0
                 self.fileset = ''
                 self.progress = 0
@@ -458,12 +456,16 @@ def main():
 		
 	# Create splitter object with filename, size, and chunkdir/size from getArgs/calcPieceSize.
 	splitter = Splitter(options,shell,largefile)
+	shell.start = getTime()
 	splitter.split()
+	shell.end = getTime()
+	shell.getRunTime('Splitting')
 
 	sys.stdout.write("\n")
 
         # Initiate rsync sessions.
         session = RsyncSession(options,shell,largefile,splitter)
+        shell.start = getTime()
         if session.getLocalCount() != session.getRemoteCount():
                 # Single rsync session to handle all chunks with <filename>_a* <filename>_b* etc....
                 for letter in ascii_lowercase:
@@ -479,41 +481,38 @@ def main():
                 sys.stdout.write("Verify data transfer.\n")
 
                 while session.syncshell.progress < 100:
-
                         if session.getQueue() < 1:
                                 # One final sync.
                                 session.verifyIntegrity()
                         while session.getQueue() == 1:
                                 session.getQueue()
                                 session.updateProgress()
+                                time.sleep(2)
                         
                         if session.getLocalCount() == session.getRemoteCount():
                                 continue
-        else:'''
+        else:
                 # Possibly break up into four quarters?  Progress is useless to watch, atm.
                 sys.stdout.write("Files already transferred.  Verify integrity of remote files.\n")
                 session.verifyIntegrity()
                 while session.getQueue() == 1:
                         session.getQueue()
-                        session.updateProgress()'''
-                        
+                        session.updateProgress()
+                        time.sleep(2)
+        shell.end = getTime()
+        shell.getRunTime('Rsyncing')
+        
         # Cat the file back together.
         builder = Builder(shell,session,largefile)
+        shell.start = getTime()
         builder.cat()
         while builder.getRemoteSize() != builder.localfilesize:
                 builder.progress()
                 time.sleep(2)
         # md5sum to make sure it's a legitimate transfer.
         builder.compareSums()
-
-        # Set finish time.
-        time_one = getTime()
-        # Calculate run time.
-        runtime = time_one - time_not
-	print '''\
-------------
-Run Time of Transfer:  %s hours %s minutes and %s seconds
-------------\n''' % (runtime.hours,runtime.minutes,runtime.seconds)
+        shell.end = getTime()
+        shell.getRunTime('Building')
 	
 
 if __name__ == '__main__':
