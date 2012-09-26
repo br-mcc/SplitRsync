@@ -621,30 +621,39 @@ def main():
         # If debug, show stats
         if options.debug:
                 print '''
-                self.RUNBASH = 0
-                self.PRINTPROGRESS = 0
-                self.CONVERTDATETIME = 0
-                self.GETRUNTIME = 0
-                self.CALCPIECESIZE = 0
-		self.PARSEOPTIONS = 0
-		self.CHECKOPTIONS = 0
-		self.DEBUGMODE = 0
-		self.FILEEXISTS = 0
-		self.GETBASENAME = 0
-		self.GETFILESIZE = 0
-		self.GETLOCALSUM = 0
-		self.CALCPIECES = 0
-		self.SPLIT = 0
-		self.CALLRSYNC = 0
-                self.GETQUEUE = 0
-                self.GETLOCALCOUNT = 0
-                self.GETREMOTECOUNT = 0
-                self.UPDATEPROGRESS = 0
-                self.VERIFYINTEGRITY = 0
-                self.CAT = 0
-                self.GETREMOTESIZE = 0
-                self.PROGRESS = 0
-                self.COMPARESUMS = 0
+shell.RUNBASH = %d
+shell.PRINTPROGRESS = %d
+shell.CONVERTDATETIME = %d
+shell.GETRUNTIME = %d
+options.CALCPIECESIZE = %d
+options.PARSEOPTIONS = %d
+options.CHECKOPTIONS = %d
+options.DEBUGMODE = %d
+largefile.FILEEXISTS = %d
+largefile.GETBASENAME = %d
+largefile.GETFILESIZE = %d
+largefile.GETLOCALSUM = %d
+splitter.CALCPIECES = %d
+splitter.SPLIT = %d
+session.CALLRSYNC = %d
+session.GETQUEUE = %d
+session.GETLOCALCOUNT = %d
+session.GETREMOTECOUNT = %d
+session.UPDATEPROGRESS = %d
+session.VERIFYINTEGRITY = %d
+builder.CAT = %d
+builder.GETREMOTESIZE = %d
+builder.PROGRESS = %d
+builder.COMPARESUMS = %d''' % (shell.RUNBASH,shell.PRINTPROGRESS,shell.CONVERTDATETIME,shell.GETRUNTIME,\
+                               shell.CALCPIECESIZE,options.PARSEOPTIONS,options.CHECKOPTIONS,options.DEBUGMODE,\
+                               largefile.FILEEXISTS,largefile.GETBASENAME,largefile.GETFILESIZE,\
+                               largefile.GETLOCALSUM,splitter.CALCPIECES,splitter.SPLIT,session.CALLRSYNC,\
+                               session.GETQUEUE,session.GETLOCALCOUNT,session.GETREMOTECOUNT,session.UPDATEPROGRESS,\
+                               session.VERIFYINTEGRITY,builder.CAT,builder.GETREMOTESIZE,builder.PROGRESS,\
+                               builder.COMPARESUMS)
+                               
+                            
+                
 
 if __name__ == '__main__':
 	try:
