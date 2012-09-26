@@ -119,8 +119,8 @@ class Options:
                 # Performance variables
 		self.CALCPIECESIZE = 0
 		self.PARSEOPTIONS = 0
-		self.CHECKOPTIONS = 0
 		self.DEBUGMODE = 0
+		self.CHECKOPTIONS = 0
 	
 	# Should be in Splitter class, but is here due to the timing between when
 	#    a LargeFile object is instantiated and the Splitter object.
@@ -143,7 +143,7 @@ class Options:
 			for o,p in opts:
 				if o in ['-h','--help']:
 					_usage()
-					sys.exit(0)
+					sys.eit(0)
 				if o in ['-f','--file']:
 					self.file = p
 					self.file_set = True
@@ -221,7 +221,7 @@ class Options:
 			print "Permissions: Good!"
 
 		if self.debug:
-                        self.debugmode()
+                        self.debugMode()
 
 	def debugMode(self):
                 self.DEBUGMODE += 1
@@ -242,8 +242,10 @@ class LargeFile:
 	def __init__(self,options,shell):
 		self.file = options.file
 		self.shell = shell
+		self.GETLOCALSUM = 0
 		self.checksum = self.getLocalSum()
 		self.basename = ''
+		self.GETFILESIZE = 0
 		self.size = self.getFileSize()
 		self.progress = 0
 		self.exists = 0
@@ -251,8 +253,7 @@ class LargeFile:
 		# Performance variables
 		self.FILEEXISTS = 0
 		self.GETBASENAME = 0
-		self.GETFILESIZE = 0
-		self.GETLOCALSUM = 0
+		self.FETCHPATH = 0
 	
 	def fileExists(self,filedir):
                 self.FILEEXISTS += 1
@@ -358,6 +359,7 @@ class RsyncSession:
                 self.file = self.largefile.basename
                 self.remote = self.options.hostname
                 self.chunkdir = self.options.chunkdir
+                self.GETLOCALCOUNT = 0
                 self.totalPieces = self.getLocalCount()
                 self.numPieces = 0
                 self.fileset = ''
@@ -367,7 +369,6 @@ class RsyncSession:
                 # Performance variables
                 self.CALLRSYNC = 0
                 self.GETQUEUE = 0
-                self.GETLOCALCOUNT = 0
                 self.GETREMOTECOUNT = 0
                 self.UPDATEPROGRESS = 0
                 self.VERIFYINTEGRITY = 0
@@ -385,7 +386,7 @@ class RsyncSession:
                 self.syncshell.runBash()
 
         def getQueue(self):
-                self.SETQUEUE += 1
+                self.GETQUEUE += 1
                 ''' Track active Rsynch processes.'''
                 self.syncshell.cmd = 'ps -eaf|grep "rsync -rlz"|grep -v grep|wc -l'
                 self.syncshell.flag = 1
@@ -594,7 +595,7 @@ def main():
         	session.updateProgress()
         	time.sleep(2)
         shell.end = getTime()
-        shell.getRunTime('Verifying files')
+        shell.getRunTime('Verification')
 
         sys.stdout.write("\n")
         
@@ -632,6 +633,7 @@ options.DEBUGMODE = %d
 largefile.FILEEXISTS = %d
 largefile.GETBASENAME = %d
 largefile.GETFILESIZE = %d
+largefile.FETCHPATH = %d
 largefile.GETLOCALSUM = %d
 splitter.CALCPIECES = %d
 splitter.SPLIT = %d
@@ -645,8 +647,8 @@ builder.CAT = %d
 builder.GETREMOTESIZE = %d
 builder.PROGRESS = %d
 builder.COMPARESUMS = %d''' % (shell.RUNBASH,shell.PRINTPROGRESS,shell.CONVERTDATETIME,shell.GETRUNTIME,\
-                               shell.CALCPIECESIZE,options.PARSEOPTIONS,options.CHECKOPTIONS,options.DEBUGMODE,\
-                               largefile.FILEEXISTS,largefile.GETBASENAME,largefile.GETFILESIZE,\
+                               options.CALCPIECESIZE,options.PARSEOPTIONS,options.CHECKOPTIONS,options.DEBUGMODE,\
+                               largefile.FILEEXISTS,largefile.GETBASENAME,largefile.GETFILESIZE,largefile.FETCHPATH,\
                                largefile.GETLOCALSUM,splitter.CALCPIECES,splitter.SPLIT,session.CALLRSYNC,\
                                session.GETQUEUE,session.GETLOCALCOUNT,session.GETREMOTECOUNT,session.UPDATEPROGRESS,\
                                session.VERIFYINTEGRITY,builder.CAT,builder.GETREMOTESIZE,builder.PROGRESS,\
