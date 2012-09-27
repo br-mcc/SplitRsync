@@ -421,18 +421,34 @@ class RsyncSession:
                 self.vLargefile = largefile
                 self.locallist = []
                 self.remotelist = []
+                self.tempfile = None
 
-        def buildLocalList(self):
-                self.vShell.cmd = 'ls  -l '+vSession.chunkdir+'/'+vSession.file
+        def fetchList(self,type):
+                if 'local' in type:
+                        self.vShell.cmd = 'ls  -l %s/%s' % (self.vSession.chunkdir,self.vSession.file)
+                else:
+                        self.vShell.cmd = "ssh %s 'ls -l %s/'" % (self.vSession.host,self.vSession.hostpath)
                 self.vShell.flag = 1
-                self.vShell.runBash()
-
-        def buildRemoteList(self):
-                self.vShell.cmd = "ssh "+
-
-        def parseList(self):
+                return self.vShell.runBash()
+                
+        def parseList(self,f):
+                self.locallist = f.readlines()
+                return list
 
         def compareFiles(self):
+                f = open('templist','w+')
+                for list in 'local','remote':
+                        f.write(self.buildLocalList(list))
+                        if 'local' in list:
+                                self.locallist = f.readlines()
+                        else:
+                                self.remotelist = f.readlines()
+                f.close()
+                os.remote('templist')
+
+                for line in self.locallist:
+                        if line
+                
 
         def fixFiles(self):'''
 					
