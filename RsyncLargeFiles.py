@@ -253,7 +253,7 @@ class LargeFile:
 	
 	def fileExists(self,filedir):
 		filedir = filedir
-		self.shell.cmd = 'ls -ld '+filedir+'|wc -l'
+		self.shell.cmd = 'ls -ld %s|wc -l' % (filedir)
 		self.shell.flag = 1
 		self.exists = int(self.shell.runBash())
 	
@@ -275,7 +275,7 @@ class LargeFile:
 
 	def getLocalSum(self):
 		print "\nFetching local file's checksum..."
-                self.shell.cmd = "md5sum "+self.file+"|awk '{print $1}'"
+                self.shell.cmd = "md5sum %s|awk '{print $1}'" % (self.file)
                 self.shell.flag = 1
                 localsum = self.shell.runBash()
                 return localsum
@@ -320,13 +320,13 @@ Calculating number of chunks with given chunk size.'''
 		self.basename = self.largefile.basename
 		self.path = self.chunkdir+'/'+str(self.basename)
 		
-		self.splittershell.cmd = 'split -b '+str(self.chunksize)+'m ' +self.file+ ' ' +self.path+ '_ &'
+		self.splittershell.cmd = 'split -b %sm %s %s_ &' % (str(self.chunksize),self.file,self.path)
 		self.splittershell.flag = 0
 		self.splittershell.runBash()
 
 		# Print progress of split command.
 		self.count = 0
-		self.splittershell.cmd = 'ls -l ' +self.path+ '* |wc -l'
+		self.splittershell.cmd = 'ls -l %s* |wc -l' % (self.path)
 		self.splittershell.flag = 1
 		self.splittershell.total = self.numPieces
 		while self.splittershell.current < self.numPieces:
@@ -353,7 +353,7 @@ class RsyncSession:
         def callRsync(self):
                 ''' Build Rsync command and create rsynch process.'''
                 source = self.file+'_'+self.fileset+'*'
-                self.syncshell.cmd = 'rsync -rlz --include "'+source+'" --exclude "*" '+self.chunkdir+' '+self.options.destination+' 2> /dev/null &'
+                self.syncshell.cmd = 'rsync -rlz --include "%s" --exclude "*" %s %s 2> /dev/null &' % (source,self.chunkdir,self.options.destination)
                 self.syncshell.flag = 0
                 #self.shell.pid_catch = 1
                 #self.pid = self.shell.runBash()
@@ -368,14 +368,14 @@ class RsyncSession:
 		return int(self.synch_queue)
 
 	def getLocalCount(self):
-                self.syncshell.cmd = 'ls -l '+self.chunkdir+'/|wc -l'
+                self.syncshell.cmd = 'ls -l %s/|wc -l' % (self.chunkdir)
                 self.syncshell.flag = 1
                 count = self.syncshell.runBash()
                 return int(count)
 
         def getRemoteCount(self):
                 ''' Check remote system for completed file transfers.'''
-                self.syncshell.cmd = "ssh -qq "+self.host+" 'ls -l "+self.hostpath+"|wc -l'"
+                self.syncshell.cmd = "ssh -qq %s 'ls -l %s|wc -l'" % (self.host,self.hostpath)
                 self.syncshell.flag = 1
 		try:
                 	chunksDone = int(self.syncshell.runBash())
@@ -396,10 +396,10 @@ class RsyncSession:
                 for f in glob.glob(self.chunkdir+'*_*'):
 			self.syncshell.printProgress('Verifying remote files: ')
 			self.syncshell.current += 1
-			self.syncshell.cmd = "ssh -qq "+self.host+" 'ls -l "+self.hostpath+"/"+str(f).rsplit("/",1)[1].strip()+"'|awk '{print $5}'"
+			self.syncshell.cmd = "ssh -qq %s 'ls -l %s/%s'|awk '{print $5}'" % (self.host,self.hostpath,str(f).rsplit("/",1)[1].strip)
 			self.syncshell.flag = 1
 			remotesize = int(self.syncshell.runBash())
-			self.syncshell.cmd = "ls -l "+f+"|awk '{print $5}'"
+			self.syncshell.cmd = "ls -l %s|awk '{print $5}'" % (f)
 			self.syncshell.flag = 1
 			try:
 				localsize = int(self.syncshell.runBash())
@@ -422,14 +422,19 @@ class RsyncSession:
                 self.locallist = []
                 self.remotelist = []
 
-        def buildLocalList():
-                
+        def buildLocalList(self):
+                self.vShell.cmd = 'ls  -l '+vSession.chunkdir+'/'+vSession.file
+                self.vShell.flag = 1
+                self.vShell.runBash()
 
-        def buildRemoteList():
+        def buildRemoteList(self):
+                self.vShell.cmd = "ssh "+
 
-        def compareFiles():
+        def parseList(self):
 
-        def fixFiles():'''
+        def compareFiles(self):
+
+        def fixFiles(self):'''
 					
 class Builder:
         def __init__(self,shell,session,largefile):
@@ -440,13 +445,13 @@ class Builder:
                 self.remotesum = ''
                 
         def cat(self):
-                self.buildershell.cmd = "ssh "+self.session.host+" 'cd "+self.session.hostpath+"; cat "+self.session.file+"_* > "+self.session.file+"  &'"
+                self.buildershell.cmd = "ssh %s 'cd %s; cat %s_* > %s  &'" % (self.session.host,self.session.hostpath,self.session.file,self.session.file)
                 self.buildershell.flag = 0
                 self.buildershell.runBash()
 		self.buildershell.progress=0
 
 	def getRemoteSize(self):
-                self.buildershell.cmd = "ssh -qq "+self.session.host+" 'ls -l "+self.session.hostpath+"/"+self.session.file+"'|awk '{print $5}'"
+                self.buildershell.cmd = "ssh -qq %s 'ls -l %s/%s'|awk '{print $5}'" % (self.session.host, self.session.hostpath,self.session.file)
                 self.buildershell.flag = 1
                 remotefilesize = self.buildershell.runBash()
                 return int(remotefilesize)
@@ -457,7 +462,7 @@ class Builder:
                 self.buildershell.printProgress('Building: ')
 
         def compareSums(self):
-                self.buildershell.cmd = "ssh -qq "+self.session.host+" 'md5sum "+self.session.host+"/"+self.session.file+"'|awk '{print $1}'"
+                self.buildershell.cmd = "ssh -qq %s 'md5sum %s/%s'|awk '{print $1}'" % (self.session.host,self.session.host,self.session.file)
                 self.buildershell.flag = 1
                 self.remotesum = self.buildershell.runBash()
                 print '''
@@ -498,10 +503,10 @@ def getTime():
         return time
 
 def clean():
-	shell.cmd = "ssh -qq "+session.host+" find "+session.hostpath+" -name '"+session.file+"_*' -exec rm -f {} \;"
+	shell.cmd = "ssh -qq %s find %s -name '%s_*' -exec rm -f {} \;" % (session.host,session.hostpath,session.file)
 	shell.flag = 0
 	shell.runBash()
-	shell.cmd = "ssh -qq "+session.host+" 'ls -l "+session.hostpath+"'"
+	shell.cmd = "ssh -qq %s 'ls -l %s'" % (session.host,session.hostpath)
 	shell.flag = 1
 	contents = shell.runBash()
 	print '''
