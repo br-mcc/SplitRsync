@@ -96,6 +96,7 @@ class BashShell:
 class Options:
 	def __init__(self):
 		# Actual script options
+		self.largefile = None
 		self.file = ''
 		self.file_set = None
 		self.destination = ''
@@ -112,10 +113,10 @@ class Options:
 	
 	# Should be in Splitter class, but is here due to the timing between when
 	#    a LargeFile object is instantiated and the Splitter object.
-	def calcPieceSize(self,largefile):
-		self.file = largefile.file
+	def calcPieceSize(self):
+		self.file = self.largefile.file
 		# Estimates chunk size for 500 chunks in MB.
-		self.chunksize = round(float(largefile.getFileSize()) / 500 / 1024 / 1024,1)
+		self.chunksize = round(float(self.largefile.getFileSize()) / 500 / 1024 / 1024,1)
 		return (int(self.chunksize) + 1)
 	
 	# Set option class attributes based on those supplied from the user.
@@ -135,7 +136,7 @@ class Options:
 					self.file_set = True
 				if o in ['-d','--destination']:
 					self.destination = p
-					self.destination = True
+					self.destination_set = True
 				if o in ['-b','--size']:
 					self.chunksize = int(p)
 					self.chunksize_set = True
@@ -146,7 +147,7 @@ class Options:
                                         self.debug = True
 				if o in ['--scrub']:
 					self.scrub = True
-			if not self.file_set or not self.hostname_set:
+			if not self.file_set or not self.destination_set:
 				raise getopt.GetoptError('MANDATORY option missing.')
 			if not self.chunksize_set or not self.chunkdir_set:
 				if not self.chunksize_set:
@@ -168,8 +169,8 @@ class Options:
 	def checkFileExist(self):
 		# Check if file really exists.
 		print "Checking for file: ", self.file
-		largefile.fileExists(self.file)
-		if not largefile.exists == 1:
+		self.largefile.fileExists(self.file)
+		if not self.largefile.exists == 1:
 			print "File exists: (ERROR) No.  Check path and filename."
 			print "Exiting . . ."
 			sys.exit(0)
@@ -179,7 +180,7 @@ class Options:
 	def sizeFlag(self):
 		if "size" in self.default:
 			# Truncate the value and add 1.
-			self.chunksize = self.calcPieceSize(largefile)
+			self.chunksize = self.calcPieceSize()
 			print "Chunk size: '-b' chunk size not specified.  Using default.  Creating ~500 chunks @ (",self.chunksize,"MB)."
 			
 	def chunkdirFlag(self):
@@ -190,8 +191,8 @@ class Options:
 			print "Chunk directory: ", self.chunkdir
 			
 	def checkChunkDirExist(self):
-		largefile.fileExists(self.chunkdir)
-		if not largefile.exists == 1:
+		self.largefile.fileExists(self.chunkdir)
+		if not self.largefile.exists == 1:
 			print "Chunk directory: (ERROR) No (",self.chunkdir,") directory exists."
 			create = raw_input("Would you like to create it? [y/n]: ")
 			if create == 'y' or create == 'yes':
@@ -209,12 +210,12 @@ class Options:
 		else:
 			print "Permissions: Good!"
 
-	def splitHostname():
-		self.remotehost,self.remotepath = self.destination.lsplit(":",1)
+	def splitHostname(self):
+		self.remotehost,self.remotepath = self.destination.split(":",1)
 		print self.remotehost, self.remotepath
 	
 	# Checks user-supplied options.  Do the files/directories exist?  Can we write to them?
-	def checkOptions(self,largefile):
+	def checkOptions(self):
 		
 		self.checkFileExist()
 		self.sizeFlag()
@@ -237,7 +238,7 @@ Options used:
    -b:   %s
    --debug used?: %s
    --scrub used?: %s
------------------------''' % (self.file,self.hostname,self.chunkdir,self.chunksize,self.debug,self.scrub)
+-----------------------''' % (self.file,self.destination,self.chunkdir,self.chunksize,self.debug,self.scrub)
 
 
 class LargeFile:
@@ -298,7 +299,7 @@ class Splitter:
 		print ">>>>> Estimated number of chunks of size",self.chunksize,"MB: ", self.numPieces 
 		# Too many pieces will be created.  Warn user and exit.
 		if self.numPieces > 676:
-			self.chunksize = self.options.calcPieceSize(self.largefile)
+			self.chunksize = self.options.calcPieceSize()
 			print "Error: Option '-b' too small.  Too many chunks will be created."
 			print "       >>>>>> Try a value of (x) where: ",self.chunksize," < x < 1024"
 			print ""
@@ -395,7 +396,7 @@ class RsyncSession:
                 for f in glob.glob(self.chunkdir+'*_*'):
 			self.syncshell.printProgress('Verifying remote files: ')
 			self.syncshell.current += 1
-			self.syncshell.cmd = "ssh -qq "+self.host+" 'ls -l "+self.hostpath+"/"+f+"'|awk '{print $5}'"
+			self.syncshell.cmd = "ssh -qq "+self.host+" 'ls -l "+self.hostpath+"/"+str(f).rsplit("/",1)[1].strip()+"'|awk '{print $5}'"
 			self.syncshell.flag = 1
 			remotesize = int(self.syncshell.runBash())
 			self.syncshell.cmd = "ls -l "+f+"|awk '{print $5}'"
@@ -413,6 +414,22 @@ class RsyncSession:
 					self.getQueue()
 					time.sleep(2)
 
+'''class Verifier:
+        def __init__(self,shell,session,largefile):
+                self.vShell = shell
+                self.vSession = session
+                self.vLargefile = largefile
+                self.locallist = []
+                self.remotelist = []
+
+        def buildLocalList():
+                
+
+        def buildRemoteList():
+
+        def compareFiles():
+
+        def fixFiles():'''
 					
 class Builder:
         def __init__(self,shell,session,largefile):
@@ -500,6 +517,7 @@ def main():
 	
 	# Create largefile object with filename from getArgs()
 	largefile = LargeFile(options,shell)
+	options.largefile = largefile
 	
 	# Check if full path is given or just local filename.  Build full path.
 	if "/" in str(options.file):
@@ -511,7 +529,7 @@ def main():
 	# Get chunk directory full path.
 	options.chunkdir = largefile.fetchPath()+"/"+options.chunkdir
 		
-	options.checkOptions(largefile)
+	options.checkOptions()
 		
 	# Create splitter object with filename, size, and chunkdir/size from getArgs/calcPieceSize.
 	splitter = Splitter(options,shell,largefile)
