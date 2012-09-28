@@ -233,12 +233,12 @@ class Options:
 DEBUG INFORMATION
 Options used:
    -f:   %s
-   -d:   %s
+   -d:   %s | host: %s, remote path: %s
    -l:   %s
    -b:   %s
    --debug used?: %s
    --scrub used?: %s
------------------------''' % (self.file,self.destination,self.chunkdir,self.chunksize,self.debug,self.scrub)
+-----------------------''' % (self.file,self.destination,self.remotehost,self.remotepath,self.chunkdir,self.chunksize,self.debug,self.scrub)
 
 
 class LargeFile:
@@ -350,6 +350,11 @@ class RsyncSession:
                 self.progress = 0
                 self.synch_queue = 0
 
+        def waitToComplete(self):
+                while self.getQueue() == 1:
+                        self.updateProgress()
+                        time.sleep(2)
+
         def callRsync(self):
                 ''' Build Rsync command and create rsynch process.'''
                 source = self.file+'_'+self.fileset+'*'
@@ -370,87 +375,52 @@ class RsyncSession:
 	def getLocalCount(self):
                 self.syncshell.cmd = 'ls -l %s/|wc -l' % (self.chunkdir)
                 self.syncshell.flag = 1
-                count = self.syncshell.runBash()
-                return int(count)
+                count = int(self.syncshell.runBash())
+                return count
 
         def getRemoteCount(self):
                 ''' Check remote system for completed file transfers.'''
                 self.syncshell.cmd = "ssh -qq %s 'ls -l %s|wc -l'" % (self.host,self.hostpath)
                 self.syncshell.flag = 1
-		try:
-                	chunksDone = int(self.syncshell.runBash())
-		except ValueError:
-			print self.syncshell.cmd
-			print self.syncshell.runBash()
-			sys.exit(0)
-                return chunksDone
+                count = int(self.syncshell.runBash())
+                return count
 
         def updateProgress(self):
                 self.syncshell.current = self.getRemoteCount()
                 self.syncshell.total = self.getLocalCount()
                 self.syncshell.printProgress('Transferring: ')
 
-        def verifyIntegrity(self):
-		self.syncshell.current = 0
-		self.syncshell.total = self.getLocalCount()
-                for f in glob.glob(self.chunkdir+'*_*'):
-			self.syncshell.printProgress('Verifying remote files: ')
-			self.syncshell.current += 1
-			self.syncshell.cmd = "ssh -qq %s 'ls -l %s/%s'|awk '{print $5}'" % (self.host,self.hostpath,str(f).rsplit("/",1)[1].strip)
-			self.syncshell.flag = 1
-			remotesize = int(self.syncshell.runBash())
-			self.syncshell.cmd = "ls -l %s|awk '{print $5}'" % (f)
-			self.syncshell.flag = 1
-			try:
-				localsize = int(self.syncshell.runBash())
-			except ValueError:
-				print self.syncshell.cmd
-				print localsize
-				sys.exit(0)
-			if remotesize < localsize:
-				self.fileset = f[-2:-1]
-				self.callRsync()
-				while self.getQueue() == 1:
-					self.getQueue()
-					time.sleep(2)
 
-'''class Verifier:
-        def __init__(self,shell,session,largefile):
+class Verifier:
+        def __init__(self,shell,session):
                 self.vShell = shell
                 self.vSession = session
-                self.vLargefile = largefile
                 self.locallist = []
                 self.remotelist = []
+		self.set =''
                 self.tempfile = None
 
-        def fetchList(self,type):
-                if 'local' in type:
-                        self.vShell.cmd = 'ls  -l %s/%s' % (self.vSession.chunkdir,self.vSession.file)
+        def fetchList(self,listType):
+                if 'local' in listType:
+                        self.vShell.cmd = "cd %s; ls  -l %s_%s*|awk '{print $5,$NF}'" % (self.vSession.chunkdir,self.vSession.file,self.set)
                 else:
-                        self.vShell.cmd = "ssh %s 'ls -l %s/'" % (self.vSession.host,self.vSession.hostpath)
+                        self.vShell.cmd = "ssh %s 'cd %s; ls -l %s_%s*'|awk '{print $5,$NF}'" % (self.vSession.host,self.vSession.hostpath,self.vSession.file,self.set)
                 self.vShell.flag = 1
                 return self.vShell.runBash()
-                
-        def parseList(self,f):
-                self.locallist = f.readlines()
-                return list
 
         def compareFiles(self):
-                f = open('templist','w+')
-                for list in 'local','remote':
-                        f.write(self.buildLocalList(list))
-                        if 'local' in list:
-                                self.locallist = f.readlines()
-                        else:
-                                self.remotelist = f.readlines()
-                f.close()
-                os.remote('templist')
+                for letter in ascii_lowercase:
+			self.set = letter
+                        self.locallist = self.fetchList('local')
+			
+                        self.remotelist = self.fetchList('remote')
 
-                for line in self.locallist:
-                        if line
-                
-
-        def fixFiles(self):'''
+                        while self.locallist != self.remotelist:
+                                self.vSession.fileset = letter
+                                self.vSession.callRsync()
+                                while self.vSession.getQueue() == 1:
+					time.sleep(1)
+        
 					
 class Builder:
         def __init__(self,shell,session,largefile):
@@ -575,31 +545,28 @@ def main():
                         if session.getQueue() < 5:
                                 session.callRsync()
 				session.updateProgress()
-				session.getQueue()
                                 time.sleep(2)
-                        while session.synch_queue == 5:
-                                session.getQueue()
+                        while session.getQueue() == 5:
                                 session.updateProgress()
 
                 while session.getRemoteCount() != session.getLocalCount():
-			session.getQueue()
-			session.fileset = '*'
                         if session.getQueue() < 1:
+                                session.fileset = '*'
                                 session.callRsync()
 			session.updateProgress()
  			time.sleep(2)
+
+ 		session.updateProgress()
+ 		
         shell.end = getTime()
         shell.getRunTime('Rsyncing')
 
         sys.stdout.write("\n")
         
         sys.stdout.write("------------\n")
+	verifier = Verifier(shell,session)
         shell.start = getTime()
-        session.verifyIntegrity()
-        while session.getQueue() == 1:
-        	session.getQueue()
-        	session.updateProgress()
-        	time.sleep(2)
+        verifier.compareFiles()
         shell.end = getTime()
         shell.getRunTime('Verification')
 
@@ -625,8 +592,6 @@ def main():
 	else:
 		print "Make sure to remove the temporary chunks on both the local and remote servers."
                                
-                            
-                
 
 if __name__ == '__main__':
 	try:
