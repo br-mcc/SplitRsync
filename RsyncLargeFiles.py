@@ -306,14 +306,16 @@ class Splitter:
 
 	def precheck(self,session):
                 if session.getLocalCount() != 0:
-                        check = raw_input('Chunk directory not empty.  Wipe the directory?[y/n]: ')
+                        print 'Chunk directory not empty.'
+                        check = raw_input('     Wipe the directory?[y/n]: ')
                         if check == 'y' or check == 'yes':
                                 self.sShell.cmd = 'rm -rvf %s/*' % (self.options.chunkdir)
                                 self.sShell.flag = 0
                                 self.sShell.runBash()
                                 return True  # Continue with splitting
                         else:
-                                check = raw_input('Skip splitting and continue with file transfer?[y/n]: ')
+                                print 'Skip splitting and continue with file transfer?'
+                                check = raw_input('     [y] to start transfer, [n] to exit:[y/n]: ')
                                 if check == 'y' or check == 'yes':
                                         return False # Don't split. Start transfer.
                                 else:
@@ -402,14 +404,14 @@ class RsyncSession:
                 self.rShell.runBash()
 
 	def getLocalCount(self):
-                self.rShell.cmd = 'ls -l %s/|wc -l' % (self.chunkdir)
+                self.rShell.cmd = 'ls -l %s/%s_*|wc -l' % (self.chunkdir,self.file)
                 self.rShell.flag = 1
                 count = int(self.rShell.runBash())
                 return count
 
         def getRemoteCount(self):
                 ''' Check remote system for completed file transfers.'''
-                self.rShell.cmd = "ssh -qq %s 'ls -l %s|wc -l'" % (self.host,self.hostpath)
+                self.rShell.cmd = "ssh -qq %s 'ls -l %s/%s_*|wc -l'" % (self.host,self.hostpath,self.file)
                 self.rShell.flag = 1
                 count = int(self.rShell.runBash())
                 return count
@@ -428,7 +430,7 @@ class Verifier:
                 self.locallist = []
                 self.remotelist = []
 		self.set =''
-                self.tempfile = None
+                self.vShell.total = session.getLocalCount() 
 
         def fetchList(self,listType):
                 if 'local' in listType:
@@ -439,6 +441,7 @@ class Verifier:
                 return self.vShell.runBash()
 
         def compareFiles(self):
+                self.vShell.current = 0
                 for letter in ascii_lowercase:
 			self.set = letter
                         self.locallist = self.fetchList('local')
@@ -451,6 +454,9 @@ class Verifier:
                                 self.vSession.callRsync()
                                 while self.vShell.getQueue() == 1:
 					time.sleep(1)
+
+			self.vShell.current =  self.vShell.current + self.locallist.count('\n')
+                        self.vShell.printProgress('Verifying: ')
         
 					
 class Builder:
