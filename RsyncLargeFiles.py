@@ -59,6 +59,7 @@ class BashShell:
 		self.total = 0
                 self.start = None
                 self.end = None
+                self.process = ''
 		
 	def runBash(self):
                 if self.flag == 0:
@@ -67,6 +68,16 @@ class BashShell:
 			p = subprocess.Popen(self.cmd, shell=True, stdout=subprocess.PIPE)
 			out = p.communicate()[0]
 			return out
+
+	def getQueue(self):
+                ''' Track active processes.'''
+                if self.process == 'rsync':
+                        check = 'rsync -rlz'
+                elif self.process == 'split':
+                        check = 'split -b'
+                self.cmd = 'ps -eaf|grep "%s"|grep -v grep|wc -l' % (check)
+                self.flag = 1
+                return int(self.runBash())
 
 	def printProgress(self,prompt):
 		try:
@@ -212,7 +223,6 @@ class Options:
 
 	def splitHostname(self):
 		self.remotehost,self.remotepath = self.destination.split(":",1)
-		print self.remotehost, self.remotepath
 	
 	# Checks user-supplied options.  Do the files/directories exist?  Can we write to them?
 	def checkOptions(self):
@@ -244,7 +254,7 @@ Options used:
 class LargeFile:
 	def __init__(self,options,shell):
 		self.file = options.file
-		self.shell = shell
+		self.lShell = shell
 		self.checksum = self.getLocalSum()
 		self.basename = ''
 		self.size = self.getFileSize()
@@ -253,9 +263,9 @@ class LargeFile:
 	
 	def fileExists(self,filedir):
 		filedir = filedir
-		self.shell.cmd = 'ls -ld %s|wc -l' % (filedir)
-		self.shell.flag = 1
-		self.exists = int(self.shell.runBash())
+		self.lShell.cmd = 'ls -ld %s|wc -l' % (filedir)
+		self.lShell.flag = 1
+		self.exists = int(self.lShell.runBash())
 	
 	def getBaseName(self):
 		print "File: ", self.file
@@ -267,31 +277,48 @@ class LargeFile:
 		return self.size
 
 	def fetchPath(self):
-		self.shell.cmd = 'pwd'
-		self.shell.flag = 1
-		path = self.shell.runBash()
+		self.lShell.cmd = 'pwd'
+		self.lShell.flag = 1
+		path = self.lShell.runBash()
 		# Return path as string stripped of special characters.
 		return str(path).strip()
 
 	def getLocalSum(self):
 		print "\nFetching local file's checksum..."
-                self.shell.cmd = "md5sum %s|awk '{print $1}'" % (self.file)
-                self.shell.flag = 1
-                localsum = self.shell.runBash()
+                self.lShell.cmd = "md5sum %s|awk '{print $1}'" % (self.file)
+                self.lShell.flag = 1
+                localsum = self.lShell.runBash()
                 return localsum
 		
 		
 class Splitter:
 	def __init__(self,options,shell,largefile):
 		self.options = options
-		self.splittershell = shell
+		self.sShell = shell
 		self.largefile = largefile
+		self.sShell.process = 'split'
 		self.file = largefile.file
 		self.basename = largefile.basename
 		self.filesize =  largefile.size
 		self.chunksize = self.options.chunksize
 		self.chunkdir = self.options.chunkdir
 		self.numPieces = 0
+
+	def precheck(self,session):
+                if session.getLocalCount() != 0:
+                        check = raw_input('Chunk directory not empty.  Wipe the directory?[y/n]: ')
+                        if check == 'y' or check == 'yes':
+                                self.sShell.cmd = 'rm -rvf %s/*' % (self.options.chunkdir)
+                                self.sShell.flag = 0
+                                self.sShell.runBash()
+                                return True  # Continue with splitting
+                        else:
+                                check = raw_input('Skip splitting and continue with file transfer?[y/n]: ')
+                                if check == 'y' or check == 'yes':
+                                        return False # Don't split. Start transfer.
+                                else:
+                                        print "Clear directory and rerun.  Exiting . . ."
+                                        sys.exit(0)
 			
 	def calcPieces(self):
 		# Given a non-default size option, calculate number of chunks.
@@ -320,26 +347,27 @@ Calculating number of chunks with given chunk size.'''
 		self.basename = self.largefile.basename
 		self.path = self.chunkdir+'/'+str(self.basename)
 		
-		self.splittershell.cmd = 'split -b %sm %s %s_ &' % (str(self.chunksize),self.file,self.path)
-		self.splittershell.flag = 0
-		self.splittershell.runBash()
+		self.sShell.cmd = 'split -b %sm %s %s_ &' % (str(self.chunksize),self.file,self.path)
+		self.sShell.flag = 0
+		self.sShell.runBash()
+		time.sleep(1)
 
 		# Print progress of split command.
-		self.count = 0
-		self.splittershell.cmd = 'ls -l %s* |wc -l' % (self.path)
-		self.splittershell.flag = 1
-		self.splittershell.total = self.numPieces
-		while self.splittershell.current < self.numPieces:
-			self.splittershell.current = int(self.splittershell.runBash())
-			self.splittershell.printProgress('Splitting: ')
+		self.sShell.cmd = 'ls -l %s* |wc -l' % (self.path)
+		self.sShell.flag = 1
+		self.sShell.total = self.numPieces
+		while self.sShell.current < self.numPieces:
+			self.sShell.current = int(self.sShell.runBash())
+			self.sShell.printProgress('Splitting: ')
 
 
 class RsyncSession:
         def __init__(self,options,shell,largefile,splitter):
                 self.options = options
-                self.syncshell = shell
+                self.rShell = shell
                 self.largefile = largefile
                 self.splitter = splitter
+                self.rShell.process = 'rsync'
                 self.file = self.largefile.basename
                 self.host = self.options.remotehost
 		self.hostpath = self.options.remotepath
@@ -350,51 +378,53 @@ class RsyncSession:
                 self.progress = 0
                 self.synch_queue = 0
 
+        def checkFile(self):
+                self.rShell.cmd = "ssh -qq %s 'ls -l %s/%s'|wc -l" % (self.host,self.hostpath,self.file)
+                self.rShell.flag = 1
+                if int(self.rShell.runBash()) == 1:
+                        return True
+                elif int(self.rShell.runBash()) == 0:
+                        return False
+
         def waitToComplete(self):
-                while self.getQueue() == 1:
+                while self.rShell.getQueue() == 1:
                         self.updateProgress()
                         time.sleep(2)
 
         def callRsync(self):
-                ''' Build Rsync command and create rsynch process.'''
+                ''' Build Rsync command and create rShell process.'''
                 source = self.file+'_'+self.fileset+'*'
-                self.syncshell.cmd = 'rsync -rlz --include "%s" --exclude "*" %s %s 2> /dev/null &' % (source,self.chunkdir,self.options.destination)
-                self.syncshell.flag = 0
+                self.rShell.cmd = 'rsync -rlz --include "%s" --exclude "*" %s/ %s/ 2> /dev/null &' % (source,self.chunkdir,self.options.destination)
+                self.rShell.flag = 0
                 #self.shell.pid_catch = 1
                 #self.pid = self.shell.runBash()
                 #self.synch_queue.append(self.pid)
-                self.syncshell.runBash()
-
-        def getQueue(self):
-                ''' Track active Rsynch processes.'''
-                self.syncshell.cmd = 'ps -eaf|grep "rsync -rlz"|grep -v grep|wc -l'
-                self.syncshell.flag = 1
-                self.synch_queue = int(self.syncshell.runBash())
-		return int(self.synch_queue)
+                self.rShell.runBash()
 
 	def getLocalCount(self):
-                self.syncshell.cmd = 'ls -l %s/|wc -l' % (self.chunkdir)
-                self.syncshell.flag = 1
-                count = int(self.syncshell.runBash())
+                self.rShell.cmd = 'ls -l %s/|wc -l' % (self.chunkdir)
+                self.rShell.flag = 1
+                count = int(self.rShell.runBash())
                 return count
 
         def getRemoteCount(self):
                 ''' Check remote system for completed file transfers.'''
-                self.syncshell.cmd = "ssh -qq %s 'ls -l %s|wc -l'" % (self.host,self.hostpath)
-                self.syncshell.flag = 1
-                count = int(self.syncshell.runBash())
+                self.rShell.cmd = "ssh -qq %s 'ls -l %s|wc -l'" % (self.host,self.hostpath)
+                self.rShell.flag = 1
+                count = int(self.rShell.runBash())
                 return count
 
         def updateProgress(self):
-                self.syncshell.current = self.getRemoteCount()
-                self.syncshell.total = self.getLocalCount()
-                self.syncshell.printProgress('Transferring: ')
+                self.rShell.current = self.getRemoteCount()
+                self.rShell.total = self.getLocalCount()
+                self.rShell.printProgress('Transferring: ')
 
 
 class Verifier:
         def __init__(self,shell,session):
                 self.vShell = shell
                 self.vSession = session
+                self.vShell.process = 'rsync'
                 self.locallist = []
                 self.remotelist = []
 		self.set =''
@@ -402,7 +432,7 @@ class Verifier:
 
         def fetchList(self,listType):
                 if 'local' in listType:
-                        self.vShell.cmd = "cd %s; ls  -l %s_%s*|awk '{print $5,$NF}'" % (self.vSession.chunkdir,self.vSession.file,self.set)
+                        self.vShell.cmd = "cd %s; ls  -l %s_%s* 2> /dev/null|awk '{print $5,$NF}'" % (self.vSession.chunkdir,self.vSession.file,self.set)
                 else:
                         self.vShell.cmd = "ssh %s 'cd %s; ls -l %s_%s*'|awk '{print $5,$NF}'" % (self.vSession.host,self.vSession.hostpath,self.vSession.file,self.set)
                 self.vShell.flag = 1
@@ -412,13 +442,14 @@ class Verifier:
                 for letter in ascii_lowercase:
 			self.set = letter
                         self.locallist = self.fetchList('local')
-			
+                        if self.locallist == '':
+                                break
                         self.remotelist = self.fetchList('remote')
 
                         while self.locallist != self.remotelist:
                                 self.vSession.fileset = letter
                                 self.vSession.callRsync()
-                                while self.vSession.getQueue() == 1:
+                                while self.vShell.getQueue() == 1:
 					time.sleep(1)
         
 					
@@ -448,7 +479,7 @@ class Builder:
                 self.buildershell.printProgress('Building: ')
 
         def compareSums(self):
-                self.buildershell.cmd = "ssh -qq %s 'md5sum %s/%s'|awk '{print $1}'" % (self.session.host,self.session.host,self.session.file)
+                self.buildershell.cmd = "ssh -qq %s 'md5sum %s/%s'|awk '{print $1}'" % (self.session.host,self.session.hostpath,self.session.file)
                 self.buildershell.flag = 1
                 self.remotesum = self.buildershell.runBash()
                 print '''
@@ -524,33 +555,40 @@ def main():
 		
 	# Create splitter object with filename, size, and chunkdir/size from getArgs/calcPieceSize.
 	splitter = Splitter(options,shell,largefile)
+	session = RsyncSession(options,shell,largefile,splitter)
 	sys.stdout.write("------------\n")
-	shell.start = getTime()
-	splitter.split()
-	shell.end = getTime()
-	shell.getRunTime('Splitting')
+	if splitter.precheck(session):
+                splitter.split()
+                print "\n>>>> Waiting for split to finish..."
+                while splitter.sShell.getQueue() == 1:
+                        pass
+                shell.end = getTime()
+                shell.getRunTime('Splitting')
 
-	sys.stdout.write("\n")
+                sys.stdout.write("\n")
 
-        # Initiate rsync sessions.
-        session = RsyncSession(options,shell,largefile,splitter)
-        sys.stdout.write("------------\n")
-        shell.start = getTime()
+                # Initiate rsync sessions.
+                sys.stdout.write("------------\n")
+                shell.start = getTime()
+        else:
+                print 'Skip split.  Begin transfer.'
+
+        shell.process = 'rsync'
 	session.updateProgress()
-        if session.getLocalCount() != session.getRemoteCount():
+        shell.start = getTime()
+        if session.getLocalCount() != session.getRemoteCount() and not session.checkFile():
                 # Single rsync session to handle all chunks with <filename>_a* <filename>_b* etc....
                 for letter in ascii_lowercase:
                         session.fileset = letter
                         # Starts initial set of rsync sessions.
-                        if session.getQueue() < 5:
+                        if shell.getQueue() < 5:
                                 session.callRsync()
 				session.updateProgress()
                                 time.sleep(2)
-                        while session.getQueue() == 5:
+                        while shell.getQueue() == 5:
                                 session.updateProgress()
-
                 while session.getRemoteCount() != session.getLocalCount():
-                        if session.getQueue() < 1:
+                        if shell.getQueue() < 1:
                                 session.fileset = '*'
                                 session.callRsync()
 			session.updateProgress()
@@ -571,20 +609,21 @@ def main():
         shell.getRunTime('Verification')
 
         sys.stdout.write("\n")
-        
-        # Cat the file back together.
-        builder = Builder(shell,session,largefile)
-        sys.stdout.write("------------\n")
-        shell.start = getTime()
-        builder.cat()
-        while builder.buildershell.progress != 100.0:
-                builder.progress()
-                time.sleep(2)
-        # md5sum to make sure it's a legitimate transfer.
-	sys.stdout.write("\nRunning a checksum to verify remote file integrity...\n")
-        builder.compareSums()
-        shell.end = getTime()
-        shell.getRunTime('Building')
+
+        if not session.checkFile():
+                # Cat the file back together.
+                builder = Builder(shell,session,largefile)
+                sys.stdout.write("------------\n")
+                shell.start = getTime()
+                builder.cat()
+                while builder.buildershell.progress != 100.0:
+                        builder.progress()
+                        time.sleep(2)
+                # md5sum to make sure it's a legitimate transfer.
+                sys.stdout.write("\nRunning a checksum to verify remote file integrity...\n")
+                builder.compareSums()
+                shell.end = getTime()
+                shell.getRunTime('Building')
 	
 	# If clean option is set.
 	if options.scrub:
