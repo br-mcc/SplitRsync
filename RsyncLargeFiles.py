@@ -3,14 +3,15 @@
 #!/usr/bin/python
 import sys
 from string import ascii_lowercase
+import math
 # Used for checking user/group permissions
 import os
 import pwd
 import grp
 import stat
 # Used for issuing bash commands and collecting script options.
-import time
 from datetime import datetime
+import time
 import getopt
 import subprocess
 # Threading for performance/management
@@ -89,7 +90,9 @@ class BashShell:
             print "Total: ", self.total
             print "Progress: ", self.progress
             sys.exit(0)
-        sys.stdout.write("\r"+prompt+" " +str(self.progress)+ "% || ["+str(self.current).strip()+"/"+str(self.total).strip()+"]")
+        percentmessage = "\r" + prompt + " " + str(self.progress)+"%"
+        progressmessage = "[" +str(self.current).strip()+ "/" +str(self.total).strip()+ "]"
+        sys.stdout.write(percentmessage + " || " + progressmessage)
         sys.stdout.flush()
         time.sleep(0.5)
             
@@ -246,7 +249,9 @@ Options used:
 -b:   %s
 --debug used?: %s
 --scrub used?: %s
------------------------''' % (self.file, self.destination, self.remotehost, self.remotepath, self.chunkdir, self.chunksize, self.debug, self.scrub)
+-----------------------''' % (self.file, self.destination, self.remotehost,
+                              self.remotepath, self.chunkdir, self.chunksize,
+                              self.debug, self.scrub)
 
 
 class LargeFile:
@@ -261,7 +266,7 @@ class LargeFile:
     
     def fileexists(self, filedir):
         filedir = filedir
-        self.lShell.cmd = 'ls -ld %s|wc -l' % (filedir)
+        self.lShell.cmd = 'ls -ld %s|wc -l 2> /dev/null' % (filedir)
         self.lShell.flag = 1
         self.exists = int(self.lShell.runbash())
     
@@ -300,6 +305,7 @@ class Splitter():
         self.filesize =  largefile.size
         self.chunksize = self.options.chunksize
         self.chunkdir = self.options.chunkdir
+        print "chunksize: ", self.chunksize
         self.numPieces = 0
 
     def precheck(self, session):
@@ -324,9 +330,9 @@ class Splitter():
                     
     def calcpieces(self):
         # Given a non-default size option,  calculate number of chunks.
-        self.numPieces = float(self.filesize) / (self.chunksize * 1024 * 1024)
+        self.numPieces = float(self.filesize) / float(self.chunksize * 1024 * 1024)
         if self.numPieces / round(self.numPieces) != 1:
-            self.numPieces = len('%.*f' % (0, self.numPieces))
+            self.numPieces = math.ceil(self.numPieces)
         print ">>>>> Estimated number of chunks of size", self.chunksize, "MB: ",  self.numPieces 
         # Too many pieces will be created.  Warn user and exit.
         if self.numPieces > 676:
@@ -357,7 +363,7 @@ Calculating number of chunks with given chunk size.'''
         time.sleep(1)
 
         # Print progress of split command.
-        self.sShell.cmd = 'ls -l %s* |wc -l' % (self.path)
+        self.sShell.cmd = 'ls -l %s* |wc -l 2> /dev/null' % (self.path)
         self.sShell.flag = 1
         self.sShell.total = self.numPieces
         while self.sShell.current < self.numPieces:
@@ -383,7 +389,7 @@ class RsyncSession:
         self.synch_queue = 0
 
     def checkfile(self):
-        self.rShell.cmd = "ssh -qq %s 'ls -l %s/%s'|wc -l" % (self.host, self.hostpath, self.file)
+        self.rShell.cmd = "ssh -qq %s 'ls -l %s/%s'|wc -l 2> /dev/null" % (self.host, self.hostpath, self.file)
         self.rShell.flag = 1
         if int(self.rShell.runbash()) == 1:
             return True
@@ -400,20 +406,17 @@ class RsyncSession:
         source = self.file+'_'+self.fileset+'*'
         self.rShell.cmd = 'rsync -rlz --include "%s" --exclude "*" %s/ %s/ 2> /dev/null &' % (source, self.chunkdir, self.options.destination)
         self.rShell.flag = 0
-        #self.shell.pid_catch = 1
-        #self.pid = self.shell.runbash()
-        #self.synch_queue.append(self.pid)
         self.rShell.runbash()
 
     def getlocalcount(self):
-        self.rShell.cmd = 'ls -l %s/%s_*|wc -l' % (self.chunkdir, self.file)
+        self.rShell.cmd = 'ls -l %s/%s_*|wc -l 2> /dev/null' % (self.chunkdir, self.file)
         self.rShell.flag = 1
         count = int(self.rShell.runbash())
         return count
 
     def getremotecount(self):
         ''' Check remote system for completed file transfers.'''
-        self.rShell.cmd = "ssh -qq %s 'ls -l %s/%s_*|wc -l'" % (self.host, self.hostpath, self.file)
+        self.rShell.cmd = "ssh -qq %s 'ls -l %s/%s_*|wc -l 2> /dev/null'" % (self.host, self.hostpath, self.file)
         self.rShell.flag = 1
         count = int(self.rShell.runbash())
         return count
@@ -447,7 +450,7 @@ class Verifier:
 
     def fetchlist(self, listType):
         if 'local' in listType:
-            self.vShell.cmd = "cd %s; ls  -l %s_%s* 2> /dev/null|awk '{print $5, $NF}'" % (self.vSession.chunkdir, self.vSession.file, self.set)
+            self.vShell.cmd = "cd %s; ls  -l %s_%s*|awk '{print $5, $NF}'" % (self.vSession.chunkdir, self.vSession.file, self.set)
         else:
             self.vShell.cmd = "ssh %s 'cd %s; ls -l %s_%s*'|awk '{print $5, $NF}'" % (self.vSession.host, self.vSession.hostpath, self.vSession.file, self.set)
         self.vShell.flag = 1
