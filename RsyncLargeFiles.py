@@ -256,6 +256,7 @@ Options used:
 
 class LargeFile:
     def __init__(self, options, shell):
+        self.options = options
         self.file = options.file
         self.lShell = shell
         self.checksumfile = ''
