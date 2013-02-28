@@ -258,6 +258,7 @@ class LargeFile:
     def __init__(self, options, shell):
         self.file = options.file
         self.lShell = shell
+        self.checksumfile = ''
         self.checksum = self.getlocalsum()
         self.basename = ''
         self.size = self.getfilesize()
@@ -288,9 +289,19 @@ class LargeFile:
 
     def getlocalsum(self):
         print "\nFetching local file's checksum..."
-        self.lShell.cmd = "md5sum %s|awk '{print $1}'" % (self.file)
-        self.lShell.flag = 1
-        localsum = self.lShell.runbash()
+        self.checksumfile = self.options.file+'.md5sum'
+        print 'MD5Sum File: ', self.checksumfile
+        try:
+            f = open(self.checksumfile,'r')
+            localsum = f.readline()
+            f.close()
+        except:
+            self.lShell.cmd = "md5sum %s|awk '{print $1}'" % (self.file)
+            self.lShell.flag = 1
+            localsum = self.lShell.runbash()
+            f = open(self.checksumfile,'w+')
+            f.write(str(localsum))
+            f.close
         return localsum
 		
 		
