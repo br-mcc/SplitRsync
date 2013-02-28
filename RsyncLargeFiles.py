@@ -229,7 +229,7 @@ class Options:
         # Check if we can read/write to it
         if not writeable(self.chunkdir):
             print ("Permissions: (ERROR) Current user does not have access "
-                   "to specified directory."
+                   "to specified directory.")
             print "Exiting."
             sys.exit(0)
         else:
