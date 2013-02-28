@@ -195,13 +195,15 @@ class Options:
         if "size" in self.default:
             # Truncate the value and add 1.
             self.chunksize = self.calcpiecesize()
-            print "Chunk size: '-b' chunk size not specified.  Using default.  Creating ~500 chunks @ (", self.chunksize, "MB)."
+            print ("Chunk size: '-b' chunk size not specified.  Using default."
+                   "  Creating ~500 chunks @ (", self.chunksize, "MB).")
             
     def chunkdirflag(self):
         # Was the option set,  or are we using the default?
         if "chunk" in self.default:
             self.chunkdir = str(os.getcwd())+'/chunks/'
-            print "Chunk directory: '-l' chunk directory not specified.  Using default 'chunks' directory in current working directory."
+            print ("Chunk directory: '-l' chunk directory not specified."
+                   "  Using default 'chunks' directory in current working directory.")
         else:
             print "Chunk directory: ",  self.chunkdir
                 
@@ -361,7 +363,8 @@ class Splitter():
             
     def split(self):
         # Calculate number of pieces and prompt to continue.
-        # Warn user if number of chunks exceeds number of chunk suffix combinations ("file.tar.gz_zz")
+        # Warn user if number of chunks exceeds number of chunk
+        #   suffix combinations ("file.tar.gz_zz")
         print '''
 Calculating number of chunks with given chunk size.'''
         self.calcpieces()
@@ -401,7 +404,8 @@ class RsyncSession:
         self.synch_queue = 0
 
     def checkfile(self):
-        self.rShell.cmd = "ssh -qq %s 'ls -l %s/%s'|wc -l 2> /dev/null" % (self.host, self.hostpath, self.file)
+        self.rShell.cmd = "ssh -qq %s 'ls -l %s/%s'|wc -l 2> /dev/null" % \
+                          (self.host, self.hostpath, self.file)
         self.rShell.flag = 1
         if int(self.rShell.runbash()) == 1:
             return True
@@ -416,7 +420,8 @@ class RsyncSession:
     def callrsync(self):
         ''' Build Rsync command and create rShell process.'''
         source = self.file+'_'+self.fileset+'*'
-        self.rShell.cmd = 'rsync -rlz --include "%s" --exclude "*" %s/ %s/ 2> /dev/null &' % (source, self.chunkdir, self.options.destination)
+        self.rShell.cmd = 'rsync -rlz --include "%s" --exclude "*" %s/ %s/ 2> /dev/null &' % \
+                          (source, self.chunkdir, self.options.destination)
         self.rShell.flag = 0
         self.rShell.runbash()
 
@@ -428,7 +433,8 @@ class RsyncSession:
 
     def getremotecount(self):
         ''' Check remote system for completed file transfers.'''
-        self.rShell.cmd = "ssh -qq %s 'ls -l %s/%s_*|wc -l 2> /dev/null'" % (self.host, self.hostpath, self.file)
+        self.rShell.cmd = "ssh -qq %s 'ls -l %s/%s_*|wc -l 2> /dev/null'" % \
+                          (self.host, self.hostpath, self.file)
         self.rShell.flag = 1
         count = int(self.rShell.runbash())
         return count
@@ -439,7 +445,8 @@ class RsyncSession:
         self.rShell.printprogress('Transferring: ')
 
     def clean():
-        rShell.cmd = "ssh -qq %s find %s -name '%s_*' -exec rm -f {} \;" % (self.host, self.hostpath, self.file)
+        rShell.cmd = "ssh -qq %s find %s -name '%s_*' -exec rm -f {} \;" % \
+                     (self.host, self.hostpath, self.file)
         rShell.flag = 0
         rShell.runbash()
         rShell.cmd = "ssh -qq %s 'ls -l %s'" % (self.host, self.hostpath)
@@ -462,9 +469,11 @@ class Verifier:
 
     def fetchlist(self, listType):
         if 'local' in listType:
-            self.vShell.cmd = "cd %s; ls  -l %s_%s*|awk '{print $5, $NF}'" % (self.vSession.chunkdir, self.vSession.file, self.set)
+            self.vShell.cmd = "cd %s; ls  -l %s_%s*|awk '{print $5, $NF}'" % \
+                              (self.vSession.chunkdir, self.vSession.file, self.set)
         else:
-            self.vShell.cmd = "ssh %s 'cd %s; ls -l %s_%s*'|awk '{print $5, $NF}'" % (self.vSession.host, self.vSession.hostpath, self.vSession.file, self.set)
+            self.vShell.cmd = "ssh %s 'cd %s; ls -l %s_%s*'|awk '{print $5, $NF}'" % \
+                              (self.vSession.host, self.vSession.hostpath, self.vSession.file, self.set)
         self.vShell.flag = 1
         return self.vShell.runbash()
 
@@ -496,13 +505,16 @@ class Builder:
         self.remotesum = ''
             
     def cat(self):
-        self.buildershell.cmd = "ssh %s 'cd %s; cat %s_* > %s  &'" % (self.session.host, self.session.hostpath, self.session.file, self.session.file)
+        self.buildershell.cmd = "ssh %s 'cd %s; cat %s_* > %s  &'" % \
+                                (self.session.host, self.session.hostpath, \
+                                 self.session.file, self.session.file)
         self.buildershell.flag = 0
         self.buildershell.runbash()
         self.buildershell.progress=0
 
     def getremotesize(self):
-        self.buildershell.cmd = "ssh -qq %s 'ls -l %s/%s'|awk '{print $5}'" % (self.session.host,  self.session.hostpath, self.session.file)
+        self.buildershell.cmd = "ssh -qq %s 'ls -l %s/%s'|awk '{print $5}'" % \
+                                (self.session.host,  self.session.hostpath, self.session.file)
         self.buildershell.flag = 1
         remotefilesize = self.buildershell.runbash()
         return int(remotefilesize)
@@ -513,14 +525,16 @@ class Builder:
         self.buildershell.printprogress('Building: ')
 
     def comparesums(self):
-        self.buildershell.cmd = "ssh -qq %s 'md5sum %s/%s'|awk '{print $1}'" % (self.session.host, self.session.hostpath, self.session.file)
+        self.buildershell.cmd = "ssh -qq %s 'md5sum %s/%s'|awk '{print $1}'" % \
+                                (self.session.host, self.session.hostpath, self.session.file)
         self.buildershell.flag = 1
         self.remotesum = self.buildershell.runbash()
         print '''
 Local sum:  %s
 Remote sum: %s''' % (self.localsum,  self.remotesum)
         if str(self.remotesum).strip() != str(self.localsum).strip():
-            print 'ERROR:  Checksums don\'t match!  There might have been a problem during the file transfer!'
+            print ('ERROR:  Checksums don\'t match!  There might'
+                   ' have been a problem during the file transfer!')
             sys.exit(0)
         else:
             print 'Transfer and rebuild of file succeeded!'
