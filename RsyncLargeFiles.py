@@ -91,7 +91,8 @@ class BashShell:
             print "Progress: ", self.progress
             sys.exit(0)
         percentmessage = "\r" + prompt + " " + str(self.progress)+"%"
-        progressmessage = "[" +str(self.current).strip()+ "/" +str(self.total).strip()+ "]"
+        progressmessage = "[" +str(self.current).strip()+ \
+                          "/" +str(self.total).strip()+ "]"
         sys.stdout.write(percentmessage + " || " + progressmessage)
         sys.stdout.flush()
         time.sleep(0.5)
@@ -130,15 +131,17 @@ class Options:
     def calcpiecesize(self):
         self.file = self.largefile.file
         # Estimates chunk size for 500 chunks in MB.
-        self.chunksize = round(float(self.largefile.getfilesize()) / 500 / 1024 / 1024, 1)
+        self.chunksize = round(float(self.largefile.getfilesize())/ \
+                               500/1024/1024, 1)
         return (int(self.chunksize) + 1)
     
     # Set option class attributes based on those supplied from the user.
     def parseoptions(self):
         optns = 'f:d:b:l:'
-        keywords = ['help', 'file=', 'destination=', 'size=', 'chunkdir=', 'debug', 'scrub']
+        keywords = ['help', 'file=', 'destination=', \
+                    'size=', 'chunkdir=', 'debug', 'scrub']
         try:
-            opts,  extraparams = getopt.getopt(sys.argv[1:],  optns,  keywords)
+            opts,extraparams = getopt.getopt(sys.argv[1:],  optns,  keywords)
             #print 'Opts: ',  opts
             #print 'extraparams: ',  extraparams
             for o, p in opts:
@@ -172,9 +175,11 @@ class Options:
             if "-f" in str(strerror):
                 print "ERROR: '-f' option given but no filename provided."
             elif "-d" in str(strerror):
-                print "ERROR: '-d' option given but no destination hostname provided."
+                print ("ERROR: '-d' option given but no destination"
+                       "hostname provided.")
             elif "MANDATORY" in str(strerror):
-                print "Missing filename or destination hostname option.  Review '-f' and '-d' options."
+                print ("Missing filename or destination hostname option."
+                       "Review '-f' and '-d' options.")
             else:
                 print strerror
             _usage()
@@ -195,22 +200,24 @@ class Options:
         if "size" in self.default:
             # Truncate the value and add 1.
             self.chunksize = self.calcpiecesize()
-            print ("Chunk size: '-b' chunk size not specified.  Using default."
-                   "  Creating ~500 chunks @ (", self.chunksize, "MB).")
+            print ("Chunk size: '-b' chunk size not specified.  "
+                   "Using default.  Creating ~500 chunks @ "
+                   "(", self.chunksize, "MB).")
             
     def chunkdirflag(self):
         # Was the option set,  or are we using the default?
         if "chunk" in self.default:
             self.chunkdir = str(os.getcwd())+'/chunks/'
             print ("Chunk directory: '-l' chunk directory not specified."
-                   "  Using default 'chunks' directory in current working directory.")
+                   "  Using default 'chunks' directory in current"
+                   " working directory.")
         else:
             print "Chunk directory: ",  self.chunkdir
                 
         # Check if the location exists
         self.largefile.fileexists(self.chunkdir)
         if not self.largefile.exists == 1:
-            print "Chunk directory: (ERROR) No (", self.chunkdir, ") directory exists."
+            print "ERROR: No (", self.chunkdir, ") directory exists."
             create = raw_input("Would you like to create it? [y/n]: ")
             if create == 'y' or create == 'yes':
                 os.mkdir(self.chunkdir)
@@ -221,7 +228,8 @@ class Options:
                 
         # Check if we can read/write to it
         if not writeable(self.chunkdir):
-            print "Permissions: (ERROR) Current user does not have access to specified directory."
+            print ("Permissions: (ERROR) Current user does not have access "
+                   "to specified directory."
             print "Exiting."
             sys.exit(0)
         else:
@@ -230,7 +238,9 @@ class Options:
     def splithostname(self):
         self.remotehost, self.remotepath = self.destination.split(":", 1)
     
-    # Checks user-supplied options.  Do the files/directories exist?  Can we write to them?
+    # Checks user-supplied options.
+    #   * Do the files/directories exist?
+    #   * Can we write to them?
     def checkoptions(self):
         self.checkfileexist(self.file)
         self.sizeflag()
@@ -344,15 +354,16 @@ class Splitter():
                     
     def calcpieces(self):
         # Given a non-default size option,  calculate number of chunks.
-        self.numPieces = float(self.filesize) / float(self.chunksize * 1024 * 1024)
+        self.numPieces = float(self.filesize) / float(self.chunksize*1024*1024)
         if self.numPieces / round(self.numPieces) != 1:
             self.numPieces = math.ceil(self.numPieces)
-        print ">>>>> Estimated number of chunks of size", self.chunksize, "MB: ",  self.numPieces 
+        print ">>>>> Estimated number of chunks of size", self.chunksize,\
+               "MB: ",  self.numPieces
         # Too many pieces will be created.  Warn user and exit.
         if self.numPieces > 676:
             self.chunksize = self.options.calcpiecesize()
             print "Error: Option '-b' too small.  Too many chunks will be created."
-            print "       >>>>>> Try a value of (x) where: ", self.chunksize, " < x < 1024"
+            print "       Try a value of (x) where: ", self.chunksize, " < x < 1024"
             print ""
             sys.exit(0)
         else:
