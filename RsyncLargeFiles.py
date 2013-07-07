@@ -423,7 +423,7 @@ class RsyncSession:
         self.rShell.total = self.getlocalcount()
         self.rShell.printprogress('Transferring: ')
 
-    def clean():
+    def clean(self):
         rShell.cmd = "ssh -qq %s find %s -name '%s_*' -exec rm -f {} \;" % (self.host, self.hostpath, self.file)
         rShell.flag = 0
         rShell.runbash()
