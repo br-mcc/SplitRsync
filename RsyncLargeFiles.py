@@ -515,12 +515,12 @@ Remote sum: %s''' % (self.localsum,  self.remotesum)
             print 'Transfer and rebuild of file succeeded!'
     
     def clean(self):
-        buildershell.cmd = "ssh -qq %s find %s -name '%s_*' -exec rm -f {} \;" % (self.host, self.hostpath, self.file)
-        buildershell.flag = 0
-        buildershell.runbash()
-        buildershell.cmd = "ssh -qq %s 'ls -l %s'" % (self.host, self.hostpath)
-        buildershell.flag = 1
-        contents = buildershell.runbash()
+        self.buildershell.cmd = "ssh -qq %s find %s -name '%s_*' -exec rm -f {} \;" % (self.session.host, self.session.hostpath, self.session.file)
+        self.buildershell.flag = 0
+        self.buildershell.runbash()
+        self.buildershell.cmd = "ssh -qq %s 'ls -l %s'" % (self.session.host, self.session.hostpath)
+        self.buildershell.flag = 1
+        contents = self.buildershell.runbash()
         print '''
     Remote directory contents after cleaning...
     %s''' % contents
@@ -651,7 +651,7 @@ def main():
     
     # If clean option is set.
     if options.scrub:
-        clean()
+        builder.clean()
     else:
         print "Make sure to remove the temporary chunks on both the local and remote servers."
                                
