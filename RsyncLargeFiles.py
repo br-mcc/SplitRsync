@@ -1,5 +1,3 @@
-#!/bin/python
-
 #!/usr/bin/python
 import sys
 from string import ascii_lowercase
